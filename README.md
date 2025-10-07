@@ -45,5 +45,9 @@ This project uses several third-party libraries and APIs that provide essential 
 ## Contributing
 Contributions are welcome! Feel free to improve the repository and submit a pull request.
 
+## Documentation
+
+All contribution guidelines and workflows are documented in the [project Wiki](https://github.com/EmoAI-Translator/EmoAI-Translator.wiki.git). Make sure to check it before starting your work.
+
 ## Contact
 For questions, please contact axeltt24@gmail.com
