@@ -9,11 +9,12 @@ This project combines TTS(text-to-speech) technology along with Computer vision 
 ## Installation
 1. Clone the repository:
 ```bash
-git clone https://github.com/axeltt24/EmoAI-Translator.git
+git clone https://github.com/EmoAI-Translator/EmoAI-Translator.git
 ```
 
 2. Install the required dependencies:
 ```bash
+ cd backend
  pip install -r requirements.txt
 ```
 
