@@ -13,3 +13,9 @@ mtcnn>=0.1.0
 retina-face>=0.0.1
 fire>=0.4.0
 gunicorn>=20.1.0
+
+# For MongoDB connection
+pymongo[srv]
+python-dotenv
+certifi
+
