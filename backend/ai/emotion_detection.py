@@ -1,6 +1,7 @@
 import cv2
 import time
 import threading
+import json
 from collections import Counter
 from deepface import DeepFace
 
@@ -22,7 +23,6 @@ def detect_emotion(frame):
 
         current_emotion = dominant.capitalize()
         return current_emotion
-
     except Exception:
         current_emotion = "Unknown"
         return current_emotion
@@ -40,10 +40,10 @@ def video_stream():
         if not success:
             break
 
-        emotion = detect_emotion(frame)
+        detect_emotion(frame)
 
         if collecting:
-            emotion_buffer.append(emotion)
+            emotion_buffer.append(current_emotion)
 
         if cv2.waitKey(1) & 0xFF == 27:
             break
@@ -68,22 +68,34 @@ def collect_emotions(duration=5):
 # Average Emotion Calculation
 def get_average_emotion():
     if not emotion_buffer:
-        return "Unknown"
+        return {"status": "failed", "dominant_emotion": "Unknown"}
 
     counter = Counter(emotion_buffer)
-    dominant = counter.most_common(1)[0][0]
+    dominant, count = counter.most_common(1)[0]
+    total = sum(counter.values())
+
+    data = {
+        "status": "success",
+        "dominant_emotion": dominant,
+        "emotion_distribution": dict(counter),
+        "sample_count": total,
+    }
+
     print(f"🎯 Final Dominant Emotion: {dominant}")
-    return dominant
+    return data
 
 
-# API connection
-def start_collection():
-    thread = threading.Thread(target=lambda: print(collect_emotions(5)))
+# Public API function (returns JSON)
+def start_collection(duration=5):
+    def run_collection():
+        result = collect_emotions(duration)
+        print(json.dumps(result, ensure_ascii=False, indent=2))
+        return result
+
+    thread = threading.Thread(target=run_collection)
     thread.start()
 
 
-if __name__ == "__main__":
+# Background thread to keep webcam running
+def start_video_stream():
     threading.Thread(target=video_stream, daemon=True).start()
-
-    input("Press Enter to start collecting emotion for 5 seconds...")
-    start_collection()
