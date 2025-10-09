@@ -7,8 +7,10 @@ from fastapi.middleware.cors import CORSMiddleware
 from db.connection import db
 from pydantic import BaseModel
 from pymongo import MongoClient
+from datetime import datetime
 import os
 from bson import ObjectId
+from fastapi import Body
 from ai.emotion_detection import (
     detect_emotion,
     emotion_buffer,
@@ -30,34 +32,31 @@ app.add_middleware(
 def root():
     return {"message": "✅ FastAPI minimal test successful."}
 
-# Emotion data model
-class EmotionData(BaseModel):
-    user_id: str
-    emotion: str
-    confidence: float
-    timestamp: str
-
 # MongoDB Connection
 client = MongoClient(os.getenv("MONGO_URI"))
 db = client[os.getenv("DB_NAME")]
 emotions_collection = db["emotions"]
 
-# Save emotion data API
 @app.post("/save_emotion")
-async def save_emotion(emotion: EmotionData):
-    """Receive emotion JSON and save to MongoDB"""
+async def save_emotion(payload: dict = Body(...)):
+    """Receive WebSocket-style JSON and save it to MongoDB"""
     try:
-        data = emotion.model_dump()
-        result = emotions_collection.insert_one(data)
-        
-        # Convert ObjectId to string for JSON serialization
-        data["_id"] = str(result.inserted_id)
+        # Add timestamp if not included
+        if "timestamp" not in payload:
+            from datetime import datetime
+            payload["timestamp"] = datetime.utcnow().isoformat()
 
+        # Insert JSON as-is
+        result = emotions_collection.insert_one(payload)
+
+        print("MongoDB insert result:", result.inserted_id)
+        # Return confirmation
         return {
             "status": "success",
             "inserted_id": str(result.inserted_id),
-            "received_data": data,
+            "saved_data": payload
         }
+
     except Exception as e:
         print("❌ MongoDB insert error:", e)
         return {"status": "error", "message": str(e)}
@@ -68,7 +67,6 @@ def get_emotions():
     for e in emotions:
         e["_id"] = str(e["_id"])
     return emotions
-
 
 # websocket endpoint for real-time emotion detection and collection, json responses.
 @app.websocket("/ws/emotion")
@@ -126,6 +124,25 @@ async def emotion_websocket(websocket: WebSocket):
                     global collecting
                     collecting = False
                     result = get_average_emotion()
+
+
+                    # Save summary to MongoDB
+                    try:
+                        summary_doc = {
+                            "status": "success",
+                            "type": "summary",
+                            "dominant_emotion": result.get("dominant_emotion"),
+                            "emotion_distribution": result.get("emotion_distribution"),
+                            "sample_count": result.get("sample_count"),
+                            "timestamp": datetime.utcnow().isoformat()
+                        }
+
+                        result_db = emotions_collection.insert_one(summary_doc)
+                        print(f"💾 Summary saved to MongoDB (ID: {result_db.inserted_id})")
+
+                    except Exception as db_error:
+                        print("⚠️ MongoDB summary insert failed:", db_error)
+
                     await websocket.send_json(
                         {"status": "success", "type": "summary", "data": result}
                     )

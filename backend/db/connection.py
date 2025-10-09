@@ -13,4 +13,4 @@ DB_NAME = os.getenv("DB_NAME")
 client = MongoClient(MONGO_URI)
 db = client[DB_NAME]
 
-print("✅ MongoDB Connected Successfully:", DB_NAME)
+print("MongoDB Connected Successfully:", DB_NAME)
