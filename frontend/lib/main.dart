@@ -105,7 +105,8 @@ class _EmotionDetectionPageState extends State<EmotionDetectionPage> {
         height: targetHeight,
       );
 
-      html.document.body!.append(_videoElement!);
+      // Controlling inside the flutter
+      //html.document.body!.append(_videoElement!);
       
       setState(() {});
       debugPrint('✅ Camera initialized');
@@ -285,7 +286,7 @@ class _EmotionDetectionPageState extends State<EmotionDetectionPage> {
                     ),
                   ),
                   child: _videoElement != null
-                      ? const Center(child: Text('Camera Preview'))
+                      ? HtmlElementView(viewType: 'camera-preview')
                       : const Center(child: CircularProgressIndicator()),
                 ),
                 const SizedBox(height: 20),
