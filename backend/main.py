@@ -2,8 +2,13 @@ import base64
 import cv2
 import numpy as np
 import asyncio
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Request
 from fastapi.middleware.cors import CORSMiddleware
+from db.connection import db
+from pydantic import BaseModel
+from pymongo import MongoClient
+import os
+from bson import ObjectId
 from ai.emotion_detection import (
     detect_emotion,
     emotion_buffer,
@@ -20,6 +25,49 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+@app.get("/")
+def root():
+    return {"message": "✅ FastAPI minimal test successful."}
+
+# Emotion data model
+class EmotionData(BaseModel):
+    user_id: str
+    emotion: str
+    confidence: float
+    timestamp: str
+
+# MongoDB Connection
+client = MongoClient(os.getenv("MONGO_URI"))
+db = client[os.getenv("DB_NAME")]
+emotions_collection = db["emotions"]
+
+# Save emotion data API
+@app.post("/save_emotion")
+async def save_emotion(emotion: EmotionData):
+    """Receive emotion JSON and save to MongoDB"""
+    try:
+        data = emotion.model_dump()
+        result = emotions_collection.insert_one(data)
+        
+        # Convert ObjectId to string for JSON serialization
+        data["_id"] = str(result.inserted_id)
+
+        return {
+            "status": "success",
+            "inserted_id": str(result.inserted_id),
+            "received_data": data,
+        }
+    except Exception as e:
+        print("❌ MongoDB insert error:", e)
+        return {"status": "error", "message": str(e)}
+
+@app.get("/emotions")
+def get_emotions():
+    emotions = list(emotions_collection.find())
+    for e in emotions:
+        e["_id"] = str(e["_id"])
+    return emotions
 
 
 # websocket endpoint for real-time emotion detection and collection, json responses.
