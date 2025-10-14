@@ -28,3 +28,4 @@ certifi
 # Speech translation dependencies
 googletrans==4.0.0-rc1
 SpeechRecognition==3.10.4
+PyAudio>=0.2.14
