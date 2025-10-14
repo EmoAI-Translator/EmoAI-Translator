@@ -1,4 +1,5 @@
 from googletrans import Translator
+from datetime import datetime
 
 # Initialize translator
 translator = Translator()
@@ -17,8 +18,8 @@ def translate_json_list(json_list, target_lang="ko"):
     translated_results = []
 
     for item in json_list:
-        original_text = item.get("text", "")
-        timestamp = item.get("timestamp")
+        original_text = item
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
 
         try:
             # Translate using Google Translate API

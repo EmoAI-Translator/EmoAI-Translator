@@ -88,6 +88,6 @@ if __name__ == "__main__":
     print("\n🌍 Translating recognized speech...")
     translated_results = translate_json_list(results, target_lang="ko")
 
-    print("\n✅ Final Translated JSON:")
+    print("\nFinal Translated JSON:")
     for item in translated_results:
         print(item)
