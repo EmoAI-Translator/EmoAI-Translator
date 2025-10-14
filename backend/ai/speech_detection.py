@@ -3,6 +3,7 @@ import threading
 import time
 from datetime import datetime
 import speech_recognition as sr
+from speech_translation import translate_json_list  # translation module
 
 
 def recognize_with_google(recognizer, audio_data, language="en-US"):
@@ -83,3 +84,10 @@ if __name__ == "__main__":
     results = live_listen_and_recognize(language="en-US", phrase_time_limit=5)
     print("\nFinal recognized results (JSON-like):")
     print(results)
+
+    print("\n🌍 Translating recognized speech...")
+    translated_results = translate_json_list(results, target_lang="ko")
+
+    print("\n✅ Final Translated JSON:")
+    for item in translated_results:
+        print(item)
