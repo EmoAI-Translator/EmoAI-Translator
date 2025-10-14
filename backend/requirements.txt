@@ -24,3 +24,7 @@ uvicorn[standard]
 pymongo[srv]
 python-dotenv
 certifi
+
+# Speech translation dependencies
+googletrans==4.0.0-rc1
+SpeechRecognition==3.10.4
