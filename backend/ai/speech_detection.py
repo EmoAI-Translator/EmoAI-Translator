@@ -1,3 +1,4 @@
+import base64
 import queue
 import threading
 import time
@@ -15,19 +16,20 @@ warnings.filterwarnings(
 whisper_model = whisper.load_model("base")
 
 
-def detect_language_and_transcribe(audio_data):
-    """Convert SpeechRecognition audio to temp WAV file and use Whisper for auto language detection."""
+def detect_language_and_transcribe_from_base64(audio_b64: str):
+    audio_bytes = base64.b64decode(audio_b64)
     with tempfile.NamedTemporaryFile(delete=False, suffix=".wav") as temp_wav:
-        temp_wav.write(audio_data.get_wav_data())
+        temp_wav.write(audio_bytes)
         temp_path = temp_wav.name
 
-    result = whisper_model.transcribe(temp_path)
-    os.remove(temp_path)
+    try:
+        result = whisper_model.transcribe(temp_path)
+    finally:
+        os.remove(temp_path)
 
     language = result.get("language", "unknown")
     text = result.get("text", "").strip()
-
-    return language, text
+    return {"language": language, "text": text}
 
 
 def live_listen_and_recognize(phrase_time_limit=None):

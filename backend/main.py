@@ -4,6 +4,7 @@ import numpy as np
 import asyncio
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Request
 from fastapi.middleware.cors import CORSMiddleware
+from backend.ai.speech_translation import translate_json_list
 from db.connection import db
 from pydantic import BaseModel
 from pymongo import MongoClient
@@ -17,6 +18,7 @@ from ai.emotion_detection import (
     collecting,
     get_average_emotion,
 )
+from ai.speech_detection import detect_language_and_transcribe_from_base64
 
 app = FastAPI()
 
@@ -28,14 +30,17 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+
 @app.get("/")
 def root():
     return {"message": "✅ FastAPI minimal test successful."}
+
 
 # MongoDB Connection
 client = MongoClient(os.getenv("MONGO_URI"))
 db = client[os.getenv("DB_NAME")]
 emotions_collection = db["emotions"]
+
 
 @app.post("/save_emotion")
 async def save_emotion(payload: dict = Body(...)):
@@ -44,6 +49,7 @@ async def save_emotion(payload: dict = Body(...)):
         # Add timestamp if not included
         if "timestamp" not in payload:
             from datetime import datetime
+
             payload["timestamp"] = datetime.utcnow().isoformat()
 
         # Insert JSON as-is
@@ -54,12 +60,13 @@ async def save_emotion(payload: dict = Body(...)):
         return {
             "status": "success",
             "inserted_id": str(result.inserted_id),
-            "saved_data": payload
+            "saved_data": payload,
         }
 
     except Exception as e:
         print("❌ MongoDB insert error:", e)
         return {"status": "error", "message": str(e)}
+
 
 @app.get("/emotions")
 def get_emotions():
@@ -67,6 +74,7 @@ def get_emotions():
     for e in emotions:
         e["_id"] = str(e["_id"])
     return emotions
+
 
 # websocket endpoint for real-time emotion detection and collection, json responses.
 @app.websocket("/ws/emotion")
@@ -125,7 +133,6 @@ async def emotion_websocket(websocket: WebSocket):
                     collecting = False
                     result = get_average_emotion()
 
-
                     # Save summary to MongoDB
                     try:
                         summary_doc = {
@@ -134,11 +141,13 @@ async def emotion_websocket(websocket: WebSocket):
                             "dominant_emotion": result.get("dominant_emotion"),
                             "emotion_distribution": result.get("emotion_distribution"),
                             "sample_count": result.get("sample_count"),
-                            "timestamp": datetime.utcnow().isoformat()
+                            "timestamp": datetime.utcnow().isoformat(),
                         }
 
                         result_db = emotions_collection.insert_one(summary_doc)
-                        print(f"💾 Summary saved to MongoDB (ID: {result_db.inserted_id})")
+                        print(
+                            f"💾 Summary saved to MongoDB (ID: {result_db.inserted_id})"
+                        )
 
                     except Exception as db_error:
                         print("⚠️ MongoDB summary insert failed:", db_error)
@@ -156,3 +165,83 @@ async def emotion_websocket(websocket: WebSocket):
 
     except WebSocketDisconnect:
         print("❌ WebSocket disconnected.")
+
+
+@app.websocket("/ws/speech")
+async def speech_websocket(websocket: WebSocket):
+    """
+    input example
+    {
+        "command": "transcribe",
+        "audio": "<base64_encoded_audio>", # base64 audio data input (PCM/WAV) from Frontend
+        "target_lang": "en"
+    }
+
+    return example
+    {
+        "status": "success",
+        "type": "speech",
+        "original": {
+            "lang": "ko",
+            "text": "안녕하세요"
+        },
+        "translated": {
+            "lang": "en",
+            "text": "Hello"
+        }
+    }
+
+    error example
+    {
+        "status": "error",
+        "message": "error message"
+    }
+    """
+
+    await websocket.accept()
+    print("🎤 WebSocket connected for speech detection.")
+
+    try:
+        while True:
+            data = await websocket.receive_json()
+            command = data.get("command")
+
+            if command == "transcribe":
+                audio_b64 = data.get("audio")
+                target_lang = data.get("target_lang", "ko")
+
+                try:
+                    result = detect_language_and_transcribe_from_base64(audio_b64)
+                    lang = result["language"]
+                    text = result["text"]
+
+                    translated = translate_json_list(
+                        [
+                            {
+                                "timestamp": datetime.utcnow().isoformat(),
+                                "lang": lang,
+                                "text": text,
+                            }
+                        ],
+                        target_lang=target_lang,
+                    )[0]
+
+                    await websocket.send_json(
+                        {
+                            "status": "success",
+                            "type": "speech",
+                            "original": {"lang": lang, "text": text},
+                            "translated": translated,
+                        }
+                    )
+
+                except Exception as e:
+                    await websocket.send_json({"status": "error", "message": str(e)})
+
+            else:
+                await websocket.send_json(
+                    {"status": "error", "message": "Unknown command."}
+                )
+
+    except WebSocketDisconnect:
+        print("❌ Speech WebSocket disconnected.")
