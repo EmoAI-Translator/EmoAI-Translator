@@ -3,20 +3,40 @@ import threading
 import time
 from datetime import datetime
 import speech_recognition as sr
+import tempfile
+import os
+import whisper
 from speech_translation import translate_json_list  # translation module
+import warnings
+
+warnings.filterwarnings(
+    "ignore", message="FP16 is not supported on CPU; using FP32 instead"
+)
+whisper_model = whisper.load_model("base")
 
 
-def recognize_with_google(recognizer, audio_data, language="en-US"):
-    text = recognizer.recognize_google(audio_data, language=language)
-    return text
+def detect_language_and_transcribe(audio_data):
+    """Convert SpeechRecognition audio to temp WAV file and use Whisper for auto language detection."""
+    with tempfile.NamedTemporaryFile(delete=False, suffix=".wav") as temp_wav:
+        temp_wav.write(audio_data.get_wav_data())
+        temp_path = temp_wav.name
+
+    result = whisper_model.transcribe(temp_path)
+    os.remove(temp_path)
+
+    language = result.get("language", "unknown")
+    text = result.get("text", "").strip()
+
+    return language, text
 
 
-def live_listen_and_recognize(language="en-US", phrase_time_limit=None):
+def live_listen_and_recognize(phrase_time_limit=None):
     """
-    json return
+    Real-time mic recognition with Whisper-based auto language detection.
+    Returns:
     [
-        {"timestamp": "20251010_153045", "text": "hello my name is kevin"},
-        {"timestamp": "20251010_153052", "text": "nice to meet you"}
+        {"timestamp": "20251010_153045", "lang": "en", "text": "hello my name is kevin"},
+        {"timestamp": "20251010_153052", "lang": "ko", "text": "안녕하세요"}
     ]
     """
     r = sr.Recognizer()
@@ -52,7 +72,7 @@ def live_listen_and_recognize(language="en-US", phrase_time_limit=None):
 
     recorder = threading.Thread(target=record_loop, daemon=True)
     recorder.start()
-    print("Listening... Speak into your microphone. (Ctrl+C to stop)")
+    print("🎤 Listening... Speak into your microphone. (Ctrl+C to stop)")
 
     try:
         while True:
@@ -60,17 +80,18 @@ def live_listen_and_recognize(language="en-US", phrase_time_limit=None):
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
 
             try:
-                text = recognize_with_google(r, audio, language=language)
-                print(f"[{timestamp}] Recognition result: {text}")
+                lang, text = detect_language_and_transcribe(audio)
 
-                recognized_results.append({"timestamp": timestamp, "text": text})
+                if text:
+                    print(f"[{timestamp}] ({lang}) → {text}")
+                    recognized_results.append(
+                        {"timestamp": timestamp, "lang": lang, "text": text}
+                    )
+                else:
+                    print(f"[{timestamp}] Silence detected.")
 
-            except sr.UnknownValueError:
-                print(f"[{timestamp}] Could not understand audio.")
-            except sr.RequestError as e:
-                print(f"[{timestamp}] Request error: {e}")
             except Exception as e:
-                print(f"[{timestamp}] Unknown error:", e)
+                print(f"[{timestamp}] Recognition error:", e)
 
     except KeyboardInterrupt:
         print("\nUser requested stop. Returning recognized results...")
@@ -81,13 +102,13 @@ def live_listen_and_recognize(language="en-US", phrase_time_limit=None):
 
 
 if __name__ == "__main__":
-    results = live_listen_and_recognize(language="en-US", phrase_time_limit=5)
-    print("\nFinal recognized results (JSON-like):")
+    results = live_listen_and_recognize(phrase_time_limit=5)
+    print("\n📝 Final recognized results:")
     print(results)
 
-    print("\n🌍 Translating recognized speech...")
+    print("\n🌍 Translating recognized speech to Korean...")
     translated_results = translate_json_list(results, target_lang="ko")
 
-    print("\nFinal Translated JSON:")
+    print("\n✅ Final Translated JSON:")
     for item in translated_results:
         print(item)
