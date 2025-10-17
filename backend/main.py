@@ -4,7 +4,7 @@ import numpy as np
 import asyncio
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Request
 from fastapi.middleware.cors import CORSMiddleware
-from backend.ai.speech_translation import translate_json_list
+from ai.speech_translation import translate_json_list
 from db.connection import db
 from pydantic import BaseModel
 from pymongo import MongoClient

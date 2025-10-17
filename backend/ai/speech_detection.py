@@ -7,16 +7,20 @@ import speech_recognition as sr
 import tempfile
 import os
 import whisper
-from speech_translation import translate_json_list  # translation module
+from ai.speech_translation import (
+    translate_json_list,
+)  # ai. needed when used in api (main.py)
 import warnings
 
 warnings.filterwarnings(
     "ignore", message="FP16 is not supported on CPU; using FP32 instead"
 )
+
 whisper_model = whisper.load_model("base")
 
 
 def detect_language_and_transcribe_from_base64(audio_b64: str):
+    """Decode base64 WAV, transcribe, detect language."""
     audio_bytes = base64.b64decode(audio_b64)
     with tempfile.NamedTemporaryFile(delete=False, suffix=".wav") as temp_wav:
         temp_wav.write(audio_bytes)
@@ -82,7 +86,20 @@ def live_listen_and_recognize(phrase_time_limit=None):
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
 
             try:
-                lang, text = detect_language_and_transcribe(audio)
+                # Convert AudioData → WAV → base64
+                with tempfile.NamedTemporaryFile(
+                    delete=False, suffix=".wav"
+                ) as temp_audio:
+                    temp_audio.write(audio.get_wav_data())
+                    temp_audio_path = temp_audio.name
+
+                with open(temp_audio_path, "rb") as f:
+                    audio_b64 = base64.b64encode(f.read()).decode("utf-8")
+
+                os.remove(temp_audio_path)
+
+                result = detect_language_and_transcribe_from_base64(audio_b64)
+                lang, text = result["language"], result["text"]
 
                 if text:
                     print(f"[{timestamp}] ({lang}) → {text}")
