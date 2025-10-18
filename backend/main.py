@@ -170,17 +170,21 @@ async def emotion_websocket(websocket: WebSocket):
 @app.websocket("/ws/speech")
 async def speech_websocket(websocket: WebSocket):
     """
-    input example
+    WebSocket endpoint for real-time speech recognition and translation.
+    Alternates speakers automatically based on each speech turn.
+
+    Input Example (Frontend → Backend)
     {
         "command": "transcribe",
-        "audio": "<base64_encoded_audio>", # base64 audio data input (PCM/WAV) from Frontend
+        "audio": "<base64_encoded_audio_string>",
         "target_lang": "en"
     }
 
-    return example
+    Return Example (Backend → Frontend)
     {
         "status": "success",
         "type": "speech",
+        "speaker": "Speaker 1",
         "original": {
             "lang": "ko",
             "text": "안녕하세요"
@@ -190,16 +194,13 @@ async def speech_websocket(websocket: WebSocket):
             "text": "Hello"
         }
     }
-
-    error example
-    {
-        "status": "error",
-        "message": "error message"
-    }
     """
 
     await websocket.accept()
     print("🎤 WebSocket connected for speech detection.")
+
+    # Initialize speaker alternation state (turn-based)
+    speaker_id = 1
 
     try:
         while True:
@@ -211,10 +212,15 @@ async def speech_websocket(websocket: WebSocket):
                 target_lang = data.get("target_lang", "ko")
 
                 try:
+                    # Step 1. Transcribe and detect language from audio
                     result = detect_language_and_transcribe_from_base64(audio_b64)
                     lang = result["language"]
                     text = result["text"]
 
+                    # Step 2. Assign current speaker (turn-based alternation)
+                    current_speaker = f"Speaker {speaker_id}"
+
+                    # Step 3. Translate recognized speech
                     translated = translate_json_list(
                         [
                             {
@@ -226,14 +232,19 @@ async def speech_websocket(websocket: WebSocket):
                         target_lang=target_lang,
                     )[0]
 
+                    # Step 4. Send full JSON response including speaker info
                     await websocket.send_json(
                         {
                             "status": "success",
                             "type": "speech",
+                            "speaker": current_speaker,
                             "original": {"lang": lang, "text": text},
                             "translated": translated,
                         }
                     )
+
+                    # Alternate speaker automatically for next turn
+                    speaker_id = 2 if speaker_id == 1 else 1
 
                 except Exception as e:
                     await websocket.send_json({"status": "error", "message": str(e)})

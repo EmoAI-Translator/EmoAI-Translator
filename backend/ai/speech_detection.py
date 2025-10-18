@@ -7,15 +7,14 @@ import speech_recognition as sr
 import tempfile
 import os
 import whisper
-from ai.speech_translation import (
-    translate_json_list,
-)  # ai. needed when used in api (main.py)
+from ai.speech_translation import translate_json_list
 import warnings
 
 warnings.filterwarnings(
     "ignore", message="FP16 is not supported on CPU; using FP32 instead"
 )
 
+# Load Whisper model once
 whisper_model = whisper.load_model("base")
 
 
@@ -36,14 +35,11 @@ def detect_language_and_transcribe_from_base64(audio_b64: str):
     return {"language": language, "text": text}
 
 
-def live_listen_and_recognize(phrase_time_limit=None):
+def live_turn_taking_recognition():
     """
-    Real-time mic recognition with Whisper-based auto language detection.
-    Returns:
-    [
-        {"timestamp": "20251010_153045", "lang": "en", "text": "hello my name is kevin"},
-        {"timestamp": "20251010_153052", "lang": "ko", "text": "안녕하세요"}
-    ]
+    Real-time microphone recognition with Whisper-based language detection.
+    Detects turns based on silence (no fixed phrase_time_limit).
+    Alternates speakers automatically: Speaker 1 <-> Speaker 2
     """
     r = sr.Recognizer()
 
@@ -53,36 +49,31 @@ def live_listen_and_recognize(phrase_time_limit=None):
         print("Microphone not found or cannot be opened:", e)
         raise
 
+    # Adjust for ambient noise once before starting
     with mic as source:
         print("Adjusting for ambient noise...")
         r.adjust_for_ambient_noise(source, duration=1.0)
         print(f"Done. Energy threshold: {r.energy_threshold}")
 
     stop_flag = threading.Event()
-    audio_q = queue.Queue()
     recognized_results = []
 
-    def record_loop():
-        with mic as source:
-            while not stop_flag.is_set():
+    def recognize_loop():
+        speaker_id = 1
+        print("🎤 Listening... Speak into your microphone. (Ctrl+C to stop)")
+
+        while not stop_flag.is_set():
+            with mic as source:
                 try:
-                    audio = r.listen(
-                        source, timeout=1, phrase_time_limit=phrase_time_limit
+                    print(
+                        f"\n🗣️  Speaker {speaker_id} speaking... (will stop on silence)"
                     )
-                    audio_q.put(audio)
-                except sr.WaitTimeoutError:
-                    continue
+                    # r.listen() automatically stops on silence if phrase_time_limit is None
+                    audio = r.listen(source, timeout=None)
                 except Exception as inner_e:
                     print("Recording error:", inner_e)
-                    break
+                    continue
 
-    recorder = threading.Thread(target=record_loop, daemon=True)
-    recorder.start()
-    print("🎤 Listening... Speak into your microphone. (Ctrl+C to stop)")
-
-    try:
-        while True:
-            audio = audio_q.get()
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
 
             try:
@@ -98,20 +89,35 @@ def live_listen_and_recognize(phrase_time_limit=None):
 
                 os.remove(temp_audio_path)
 
+                # Run Whisper transcription
                 result = detect_language_and_transcribe_from_base64(audio_b64)
                 lang, text = result["language"], result["text"]
 
                 if text:
-                    print(f"[{timestamp}] ({lang}) → {text}")
+                    print(f"[{timestamp}] Speaker {speaker_id} ({lang}) → {text}")
                     recognized_results.append(
-                        {"timestamp": timestamp, "lang": lang, "text": text}
+                        {
+                            "timestamp": timestamp,
+                            "speaker": f"Speaker {speaker_id}",
+                            "lang": lang,
+                            "text": text,
+                        }
                     )
+                    # Alternate speakers automatically
+                    speaker_id = 2 if speaker_id == 1 else 1
                 else:
                     print(f"[{timestamp}] Silence detected.")
 
             except Exception as e:
                 print(f"[{timestamp}] Recognition error:", e)
 
+    # Run recognition in a thread
+    recorder = threading.Thread(target=recognize_loop, daemon=True)
+    recorder.start()
+
+    try:
+        while True:
+            time.sleep(0.5)
     except KeyboardInterrupt:
         print("\nUser requested stop. Returning recognized results...")
         stop_flag.set()
@@ -121,9 +127,10 @@ def live_listen_and_recognize(phrase_time_limit=None):
 
 
 if __name__ == "__main__":
-    results = live_listen_and_recognize(phrase_time_limit=5)
+    results = live_turn_taking_recognition()
     print("\n📝 Final recognized results:")
-    print(results)
+    for r in results:
+        print(r)
 
     print("\n🌍 Translating recognized speech to Korean...")
     translated_results = translate_json_list(results, target_lang="ko")
