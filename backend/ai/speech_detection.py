@@ -7,17 +7,51 @@ import speech_recognition as sr
 import tempfile
 import os
 import whisper
-from ai.speech_translation import translate_json_list
+from speech_translation import translate_json_list
 import warnings
+import torch
+import librosa
+from transformers import AutoFeatureExtractor, AutoModelForAudioClassification
 
 warnings.filterwarnings(
     "ignore", message="FP16 is not supported on CPU; using FP32 instead"
 )
 
-# Load Whisper model once
+# -------------------------------
+# Load Models Once
+# -------------------------------
 whisper_model = whisper.load_model("base")
+emotion_model_name = "superb/wav2vec2-base-superb-er"
+emotion_extractor = AutoFeatureExtractor.from_pretrained(emotion_model_name)
+emotion_model = AutoModelForAudioClassification.from_pretrained(emotion_model_name)
 
 
+# -------------------------------
+# Emotion Detection Function
+# -------------------------------
+def detect_emotion_from_audio(wav_path: str):
+    """
+    Returns: {"emotion": str, "scores": dict}
+    """
+    speech, sr = librosa.load(wav_path, sr=16000)
+    inputs = emotion_extractor(speech, sampling_rate=16000, return_tensors="pt")
+
+    with torch.no_grad():
+        logits = emotion_model(**inputs).logits
+        probs = torch.nn.functional.softmax(logits, dim=-1)[0]
+        pred_id = torch.argmax(probs).item()
+
+    label = emotion_model.config.id2label[pred_id]
+    scores = {
+        emotion_model.config.id2label[i]: round(float(probs[i]), 4)
+        for i in range(len(probs))
+    }
+    return {"emotion": label, "scores": scores}
+
+
+# -------------------------------
+# Whisper Transcription + Language
+# -------------------------------
 def detect_language_and_transcribe_from_base64(audio_b64: str):
     """Decode base64 WAV, transcribe, detect language."""
     audio_bytes = base64.b64decode(audio_b64)
@@ -27,19 +61,25 @@ def detect_language_and_transcribe_from_base64(audio_b64: str):
 
     try:
         result = whisper_model.transcribe(temp_path)
+        emotion_result = detect_emotion_from_audio(temp_path)
     finally:
         os.remove(temp_path)
 
     language = result.get("language", "unknown")
     text = result.get("text", "").strip()
-    return {"language": language, "text": text}
+    emotion = emotion_result["emotion"]
+    scores = emotion_result["scores"]
+
+    return {"language": language, "text": text, "emotion": emotion, "scores": scores}
 
 
+# -------------------------------
+# Real-time Speech Recognition Loop
+# -------------------------------
 def live_turn_taking_recognition():
     """
-    Real-time microphone recognition with Whisper-based language detection.
-    Detects turns based on silence (no fixed phrase_time_limit).
-    Alternates speakers automatically: Speaker 1 <-> Speaker 2
+    Real-time microphone recognition with Whisper-based language detection + Emotion detection.
+    Detects turns based on silence and alternates speakers automatically.
     """
     r = sr.Recognizer()
 
@@ -49,7 +89,6 @@ def live_turn_taking_recognition():
         print("Microphone not found or cannot be opened:", e)
         raise
 
-    # Adjust for ambient noise once before starting
     with mic as source:
         print("Adjusting for ambient noise...")
         r.adjust_for_ambient_noise(source, duration=1.0)
@@ -68,7 +107,6 @@ def live_turn_taking_recognition():
                     print(
                         f"\n🗣️  Speaker {speaker_id} speaking... (will stop on silence)"
                     )
-                    # r.listen() automatically stops on silence if phrase_time_limit is None
                     audio = r.listen(source, timeout=None)
                 except Exception as inner_e:
                     print("Recording error:", inner_e)
@@ -89,21 +127,30 @@ def live_turn_taking_recognition():
 
                 os.remove(temp_audio_path)
 
-                # Run Whisper transcription
+                # Run Whisper + Emotion
                 result = detect_language_and_transcribe_from_base64(audio_b64)
-                lang, text = result["language"], result["text"]
+                lang, text, emotion, scores = (
+                    result["language"],
+                    result["text"],
+                    result["emotion"],
+                    result["scores"],
+                )
 
                 if text:
                     print(f"[{timestamp}] Speaker {speaker_id} ({lang}) → {text}")
+                    print(f"   🎭 Emotion: {emotion} {scores}")
+
                     recognized_results.append(
                         {
                             "timestamp": timestamp,
                             "speaker": f"Speaker {speaker_id}",
                             "lang": lang,
                             "text": text,
+                            "emotion": emotion,
+                            "emotion_scores": scores,
                         }
                     )
-                    # Alternate speakers automatically
+
                     speaker_id = 2 if speaker_id == 1 else 1
                 else:
                     print(f"[{timestamp}] Silence detected.")
@@ -111,7 +158,6 @@ def live_turn_taking_recognition():
             except Exception as e:
                 print(f"[{timestamp}] Recognition error:", e)
 
-    # Run recognition in a thread
     recorder = threading.Thread(target=recognize_loop, daemon=True)
     recorder.start()
 
@@ -126,6 +172,9 @@ def live_turn_taking_recognition():
         return recognized_results
 
 
+# -------------------------------
+# Main Entry
+# -------------------------------
 if __name__ == "__main__":
     results = live_turn_taking_recognition()
     print("\n📝 Final recognized results:")

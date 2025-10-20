@@ -33,7 +33,7 @@ app.add_middleware(
 
 @app.get("/")
 def root():
-    return {"message": "✅ FastAPI minimal test successful."}
+    return {"message": "FastAPI minimal test successful."}
 
 
 # MongoDB Connection
@@ -64,7 +64,7 @@ async def save_emotion(payload: dict = Body(...)):
         }
 
     except Exception as e:
-        print("❌ MongoDB insert error:", e)
+        print("MongoDB insert error:", e)
         return {"status": "error", "message": str(e)}
 
 
@@ -80,7 +80,7 @@ def get_emotions():
 @app.websocket("/ws/emotion")
 async def emotion_websocket(websocket: WebSocket):
     await websocket.accept()
-    print("📡 WebSocket connected for emotion detection.")
+    print("WebSocket connected for emotion detection.")
 
     global collecting
 
@@ -145,12 +145,10 @@ async def emotion_websocket(websocket: WebSocket):
                         }
 
                         result_db = emotions_collection.insert_one(summary_doc)
-                        print(
-                            f"💾 Summary saved to MongoDB (ID: {result_db.inserted_id})"
-                        )
+                        print(f"Summary saved to MongoDB (ID: {result_db.inserted_id})")
 
                     except Exception as db_error:
-                        print("⚠️ MongoDB summary insert failed:", db_error)
+                        print("MongoDB summary insert failed:", db_error)
 
                     await websocket.send_json(
                         {"status": "success", "type": "summary", "data": result}
@@ -164,7 +162,7 @@ async def emotion_websocket(websocket: WebSocket):
                 )
 
     except WebSocketDisconnect:
-        print("❌ WebSocket disconnected.")
+        print("WebSocket disconnected.")
 
 
 @app.websocket("/ws/speech")
@@ -192,12 +190,14 @@ async def speech_websocket(websocket: WebSocket):
         "translated": {
             "lang": "en",
             "text": "Hello"
-        }
+        },
+        "emotion": "happy",
+        "emotion_scores": {"happy": 0.95, "sad": 0.02, ...}
     }
     """
 
     await websocket.accept()
-    print("🎤 WebSocket connected for speech detection.")
+    print("WebSocket connected for speech detection.")
 
     # Initialize speaker alternation state (turn-based)
     speaker_id = 1
@@ -216,6 +216,8 @@ async def speech_websocket(websocket: WebSocket):
                     result = detect_language_and_transcribe_from_base64(audio_b64)
                     lang = result["language"]
                     text = result["text"]
+                    emotion = result["emotion"]
+                    scores = result["scores"]
 
                     # Step 2. Assign current speaker (turn-based alternation)
                     current_speaker = f"Speaker {speaker_id}"
@@ -240,6 +242,8 @@ async def speech_websocket(websocket: WebSocket):
                             "speaker": current_speaker,
                             "original": {"lang": lang, "text": text},
                             "translated": translated,
+                            "emotion": emotion,
+                            "emotion_scores": scores,
                         }
                     )
 
@@ -255,4 +259,4 @@ async def speech_websocket(websocket: WebSocket):
                 )
 
     except WebSocketDisconnect:
-        print("❌ Speech WebSocket disconnected.")
+        print("Speech WebSocket disconnected.")
