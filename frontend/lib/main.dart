@@ -53,14 +53,21 @@ class _EmotionDetectionPageState extends State<EmotionDetectionPage> {
   html.CanvasElement? _canvasElement;
   html.MediaStream? _stream;
   Timer? _captureTimer;
+  Timer? _audioAnalyzerTimer;
   WebSocketChannel? _channel;
-  
+
+  // Audio analysis
+  html.AudioContext? _audioContext;
+  html.AnalyserNode? _analyserNode;
+  html.MediaStreamAudioSourceNode? _audioSource;
+
   bool _isCapturing = false;
   bool _isCollecting = false;
   int _frameCount = 0;
   String _currentEmotion = 'Unknown';
   String _connectionStatus = 'Disconnected';
   Map<String, dynamic>? _summaryData;
+  double _audioLevel = 0.0; // 0.0 ~ 1.0
 
   static const int targetWidth = 640;
   static const int targetHeight = 480;
@@ -83,7 +90,8 @@ class _EmotionDetectionPageState extends State<EmotionDetectionPage> {
         'video': {
           'width': targetWidth,
           'height': targetHeight,
-        }
+        },
+        'audio': true,
       });
 
       _videoElement = html.VideoElement()
@@ -107,12 +115,72 @@ class _EmotionDetectionPageState extends State<EmotionDetectionPage> {
 
       // Controlling inside the flutter
       //html.document.body!.append(_videoElement!);
-      
+
+      // Initialize audio context for volume analysis
+      _initializeAudioAnalyzer();
+
       setState(() {});
       debugPrint('✅ Camera initialized');
     } catch (e) {
       debugPrint('❌ Camera initialization error: $e');
     }
+  }
+
+  void _initializeAudioAnalyzer() {
+    try {
+      _audioContext = html.AudioContext();
+      _analyserNode = _audioContext!.createAnalyser();
+      _analyserNode!.fftSize = 256;
+
+      _audioSource = _audioContext!.createMediaStreamSource(_stream!);
+      _audioSource!.connectNode(_analyserNode!);
+
+      debugPrint('✅ Audio analyzer initialized');
+    } catch (e) {
+      debugPrint('❌ Audio analyzer initialization error: $e');
+    }
+  }
+
+  void _startAudioAnalysis() {
+    if (_audioAnalyzerTimer != null) return;
+
+    _audioAnalyzerTimer = Timer.periodic(
+      const Duration(milliseconds: 50), // Update 20 times per second
+      (timer) => _analyzeAudioLevel(),
+    );
+
+    debugPrint('▶️ Started audio analysis');
+  }
+
+  void _stopAudioAnalysis() {
+    _audioAnalyzerTimer?.cancel();
+    _audioAnalyzerTimer = null;
+    setState(() {
+      _audioLevel = 0.0;
+    });
+    debugPrint('⏹️ Stopped audio analysis');
+  }
+
+  void _analyzeAudioLevel() {
+    if (_analyserNode == null) return;
+
+    final dataArray = html.Uint8List(_analyserNode!.frequencyBinCount);
+    _analyserNode!.getByteFrequencyData(dataArray);
+
+    // Calculate average volume
+    double sum = 0;
+    for (var i = 0; i < dataArray.length; i++) {
+      sum += dataArray[i];
+    }
+    final average = sum / dataArray.length;
+
+    // Normalize to 0.0 - 1.0 and apply smoothing
+    final normalizedLevel = (average / 255.0).clamp(0.0, 1.0);
+
+    setState(() {
+      // Smooth the audio level changes
+      _audioLevel = (_audioLevel * 0.7) + (normalizedLevel * 0.3);
+    });
   }
 
   void _connectWebSocket() {
@@ -189,12 +257,15 @@ class _EmotionDetectionPageState extends State<EmotionDetectionPage> {
       Duration(milliseconds: captureIntervalMs),
       (timer) => _captureAndSendFrame(),
     );
-    
+
+    _startAudioAnalysis();
+
     debugPrint('▶️ Started capturing frames');
   }
 
   void _stopCapture() {
     _captureTimer?.cancel();
+    _stopAudioAnalysis();
     setState(() {
       _isCapturing = false;
     });
@@ -254,7 +325,10 @@ class _EmotionDetectionPageState extends State<EmotionDetectionPage> {
   @override
   void dispose() {
     _captureTimer?.cancel();
+    _audioAnalyzerTimer?.cancel();
     _channel?.sink.close();
+    _audioSource?.disconnect();
+    _audioContext?.close();
     _stream?.getTracks().forEach((track) => track.stop());
     _videoElement?.remove();
     super.dispose();
@@ -262,170 +336,228 @@ class _EmotionDetectionPageState extends State<EmotionDetectionPage> {
 
   @override
   Widget build(BuildContext context) {
+    final screenSize = MediaQuery.of(context).size;
+    final buttonSize = 200.0;
+
+    // Calculate shadow radius based on audio level
+    final baseRadius = 20.0;
+    final maxRadius = 100.0;
+    final shadowRadius = baseRadius + (_audioLevel * (maxRadius - baseRadius));
+
     return Scaffold(
-      appBar: AppBar(
-        backgroundColor: Theme.of(context).colorScheme.inversePrimary,
-        title: const Text('Emotion Detection'),
-      ),
-      body: SingleChildScrollView(
-        child: Center(
-          child: Padding(
-            padding: const EdgeInsets.all(20.0),
+      backgroundColor: Colors.black,
+      body: Stack(
+        children: [
+          // Video background
+          if (_videoElement != null)
+            Positioned.fill(
+              child: Opacity(
+                opacity: 0.3,
+                child: HtmlElementView(viewType: 'camera-preview'),
+              ),
+            ),
+
+          // Main content
+          Center(
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
+                // Status indicator
                 Container(
-                  width: targetWidth.toDouble(),
-                  height: targetHeight.toDouble(),
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                   decoration: BoxDecoration(
-                    border: Border.all(
-                      color: _connectionStatus == 'Connected' 
-                          ? Colors.green 
-                          : Colors.red,
-                      width: 3,
+                    color: Colors.black54,
+                    borderRadius: BorderRadius.circular(20),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(
+                        _connectionStatus == 'Connected'
+                            ? Icons.check_circle
+                            : Icons.error,
+                        color: _connectionStatus == 'Connected'
+                            ? Colors.green
+                            : Colors.red,
+                        size: 20,
+                      ),
+                      const SizedBox(width: 8),
+                      Text(
+                        _connectionStatus,
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 14,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+
+                const SizedBox(height: 40),
+
+                // Emotion display
+                Text(
+                  _currentEmotion,
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 32,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+
+                const SizedBox(height: 60),
+
+                // Central circular button with audio-reactive glow
+                GestureDetector(
+                  onTap: () {
+                    if (_isCapturing) {
+                      _stopCapture();
+                    } else {
+                      if (_channel != null) {
+                        _startCapture();
+                      }
+                    }
+                  },
+                  child: AnimatedContainer(
+                    duration: const Duration(milliseconds: 100),
+                    width: buttonSize,
+                    height: buttonSize,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      color: _isCapturing ? Colors.red : Colors.blue,
+                      boxShadow: [
+                        BoxShadow(
+                          color: (_isCapturing ? Colors.red : Colors.blue)
+                              .withOpacity(0.6),
+                          blurRadius: shadowRadius,
+                          spreadRadius: shadowRadius / 2,
+                        ),
+                      ],
+                    ),
+                    child: Icon(
+                      _isCapturing ? Icons.stop : Icons.mic,
+                      color: Colors.white,
+                      size: 80,
                     ),
                   ),
-                  child: _videoElement != null
-                      ? HtmlElementView(viewType: 'camera-preview')
-                      : const Center(child: CircularProgressIndicator()),
                 ),
+
                 const SizedBox(height: 20),
-                
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Icon(
-                      _connectionStatus == 'Connected' 
-                          ? Icons.check_circle 
-                          : Icons.error,
-                      color: _connectionStatus == 'Connected' 
-                          ? Colors.green 
-                          : Colors.red,
+
+                // Audio level indicator
+                if (_isCapturing)
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                    decoration: BoxDecoration(
+                      color: Colors.black54,
+                      borderRadius: BorderRadius.circular(20),
                     ),
-                    const SizedBox(width: 8),
-                    Text(
-                      'Status: $_connectionStatus',
-                      style: Theme.of(context).textTheme.titleMedium,
-                    ),
-                  ],
-                ),
-                
-                const SizedBox(height: 10),
-                
-                Card(
-                  color: Colors.blue.shade50,
-                  child: Padding(
-                    padding: const EdgeInsets.all(16.0),
                     child: Column(
                       children: [
                         Text(
-                          'Current Emotion',
-                          style: Theme.of(context).textTheme.titleSmall,
+                          'Audio Level: ${(_audioLevel * 100).toStringAsFixed(0)}%',
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 14,
+                          ),
                         ),
                         const SizedBox(height: 8),
-                        Text(
-                          _currentEmotion,
-                          style: Theme.of(context).textTheme.headlineMedium?.copyWith(
-                            fontWeight: FontWeight.bold,
-                            color: Colors.blue.shade900,
+                        Container(
+                          width: 200,
+                          height: 4,
+                          decoration: BoxDecoration(
+                            color: Colors.white24,
+                            borderRadius: BorderRadius.circular(2),
+                          ),
+                          child: FractionallySizedBox(
+                            alignment: Alignment.centerLeft,
+                            widthFactor: _audioLevel,
+                            child: Container(
+                              decoration: BoxDecoration(
+                                color: Colors.blue,
+                                borderRadius: BorderRadius.circular(2),
+                              ),
+                            ),
                           ),
                         ),
                       ],
                     ),
                   ),
-                ),
-                
-                const SizedBox(height: 10),
-                
+
+                const SizedBox(height: 40),
+
+                // Frame count
+                if (_isCapturing)
+                  Text(
+                    'Frames: $_frameCount',
+                    style: const TextStyle(
+                      color: Colors.white70,
+                      fontSize: 14,
+                    ),
+                  ),
+
+                // Collection status
                 if (_isCollecting)
-                  Card(
-                    color: Colors.orange.shade50,
-                    child: Padding(
-                      padding: const EdgeInsets.all(16.0),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          const CircularProgressIndicator(),
-                          const SizedBox(width: 16),
-                          Text(
-                            'Collecting emotions...',
-                            style: TextStyle(color: Colors.orange.shade900),
+                  Container(
+                    margin: const EdgeInsets.only(top: 20),
+                    padding: const EdgeInsets.all(16),
+                    decoration: BoxDecoration(
+                      color: Colors.orange.withOpacity(0.3),
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: Colors.orange, width: 2),
+                    ),
+                    child: const Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        SizedBox(
+                          width: 20,
+                          height: 20,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            color: Colors.orange,
                           ),
-                        ],
-                      ),
+                        ),
+                        SizedBox(width: 12),
+                        Text(
+                          'Collecting emotions...',
+                          style: TextStyle(
+                            color: Colors.orange,
+                            fontSize: 14,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ],
                     ),
                   ),
-                
-                if (_summaryData != null)
-                  Card(
-                    color: Colors.green.shade50,
-                    child: Padding(
-                      padding: const EdgeInsets.all(16.0),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            'Summary',
-                            style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
-                          const SizedBox(height: 8),
-                          Text(_summaryData.toString()),
-                        ],
-                      ),
-                    ),
-                  ),
-                
-                const SizedBox(height: 10),
-                Text('Frames Sent: $_frameCount'),
-                
-                const SizedBox(height: 20),
-                
-                Wrap(
-                  spacing: 10,
-                  runSpacing: 10,
-                  alignment: WrapAlignment.center,
-                  children: [
-                    ElevatedButton.icon(
-                      onPressed: _isCapturing ? null : _startCapture,
-                      icon: const Icon(Icons.play_arrow),
-                      label: const Text('Start Detection'),
-                    ),
-                    ElevatedButton.icon(
-                      onPressed: _isCapturing ? _stopCapture : null,
-                      icon: const Icon(Icons.stop),
-                      label: const Text('Stop Detection'),
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: Colors.red.shade100,
-                      ),
-                    ),
-                    ElevatedButton.icon(
-                      onPressed: _isCapturing && !_isCollecting
-                          ? () => _startCollection(5)
-                          : null,
-                      icon: const Icon(Icons.assessment),
-                      label: const Text('Collect 5s'),
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: Colors.orange.shade100,
-                      ),
-                    ),
-                    ElevatedButton.icon(
-                      onPressed: _isCapturing && !_isCollecting
-                          ? () => _startCollection(10)
-                          : null,
-                      icon: const Icon(Icons.analytics),
-                      label: const Text('Collect 10s'),
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: Colors.orange.shade100,
-                      ),
-                    ),
-                  ],
-                ),
               ],
             ),
           ),
-        ),
+
+          // Bottom info panel
+          Positioned(
+            left: 0,
+            right: 0,
+            bottom: 40,
+            child: Center(
+              child: Container(
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: Colors.black54,
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Text(
+                  _isCapturing
+                      ? 'Tap to stop detection'
+                      : 'Tap to start detection',
+                  style: const TextStyle(
+                    color: Colors.white70,
+                    fontSize: 14,
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }
