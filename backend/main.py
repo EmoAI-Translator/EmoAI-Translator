@@ -188,8 +188,9 @@ async def speech_websocket(websocket: WebSocket):
             "text": "안녕하세요"
         },
         "translated": {
-            "lang": "en",
-            "text": "Hello"
+            "timestamp": datetime.utcnow().isoformat(),
+            "lang": lang,
+            "text": text,
         },
         "emotion": "happy",
         "emotion_scores": {"happy": 0.95, "sad": 0.02, ...}
@@ -233,6 +234,27 @@ async def speech_websocket(websocket: WebSocket):
                         ],
                         target_lang=target_lang,
                     )[0]
+
+                    # translate_json_list currently returns {
+                    #   'timestamp': ..., 'original_text': ..., 'translated_text': ...
+                    # }
+                    # Frontend expects translated to contain 'timestamp', 'lang', 'text'.
+                    # Map the translator output to the frontend-expected shape here.
+                    try:
+                        translated_payload = {
+                            "timestamp": translated.get("timestamp"),
+                            "lang": target_lang,
+                            # prefer the key 'text' for frontend; fall back to translated_text or original_text
+                            "text": translated.get("translated_text")
+                            or translated.get("text")
+                            or translated.get("original_text"),
+                        };
+                    except Exception:
+                        translated_payload = {
+                            "timestamp": datetime.utcnow().isoformat(),
+                            "lang": target_lang,
+                            "text": None,
+                        }
 
                     # Step 4. Send full JSON response including speaker info
                     await websocket.send_json(
