@@ -127,6 +127,8 @@ class _EmotionDetectionPageState extends State<EmotionDetectionPage> {
   }
 
   Future<void> _initializeAudioStream() async {
+    _buffers.clear();
+
     final constraints = web.MediaStreamConstraints(audio: true.toJS);
     final jsPromise = web.window.navigator.mediaDevices!.getUserMedia(
       constraints,
@@ -302,10 +304,24 @@ class _EmotionDetectionPageState extends State<EmotionDetectionPage> {
   Future<void> _startTransmitting() async {
     if (_isTransmitting || _channel == null) return;
 
+    _audioBuffers.clear(); //이거 안씀
+    _buffers.clear();
+
     _audioSendTimer = Timer.periodic(
-      Duration(milliseconds: audioSendIntervalMs),
-      (timer) => _sendAudioData(),
+      const Duration(milliseconds: 1000), // 1초마다
+      (timer) {
+        if (_audioBuffers.isNotEmpty) {
+          _buffers.addAll(_audioBuffers);
+          _audioBuffers.clear();
+          debugPrint('📦 Buffered audio chunk: ${_buffers.length} buffers');
+        }
+      },
     );
+
+    // _audioSendTimer = Timer.periodic(
+    //   Duration(milliseconds: audioSendIntervalMs),
+    //   (timer) => _sendAudioData(),
+    // );
 
     // if (await _recorder.hasPermission()) {
     // 스트림으로 실시간 버퍼 받기
@@ -361,23 +377,23 @@ class _EmotionDetectionPageState extends State<EmotionDetectionPage> {
     // }
 
     if (_buffers.isEmpty || _channel == null) {
-      // _sendAudio();
-      if (_buffers.isEmpty || _channel == null) return;
-
-      final buffersToSend = _buffers.toList();
-      _buffers.clear();
-
-      final base64Audio = _encodeAudioToBase64(buffersToSend);
-
-      _channel!.sink.add(
-        jsonEncode({
-          'command': 'transcribe', // 서버와 약속된 오디오 처리 명령어
-          'audio': base64Audio,
-          'target_lang': 'en',
-        }),
-      );
-      debugPrint('🛑 Sent stop command to backend');
+      debugPrint('⚠️ No audio captured to send');
+      return;
     }
+
+    final buffersToSend = _buffers.toList();
+    _buffers.clear();
+
+    final base64Audio = _encodeAudioToBase64(buffersToSend);
+
+    _channel!.sink.add(
+      jsonEncode({
+        'command': 'transcribe', // 서버와 약속된 오디오 처리 명령어
+        'audio': base64Audio,
+        'target_lang': 'en',
+      }),
+    );
+    debugPrint('🛑 Sent stop command to backend');
   }
 
   // void _sendAudio() {
@@ -412,6 +428,89 @@ class _EmotionDetectionPageState extends State<EmotionDetectionPage> {
         'target_lang': 'en',
       }),
     );
+  }
+
+  Uint8List _encodeWav(List<Float32List> audioBuffers) {
+    const int sampleRate = 16000;
+    int totalSamples = audioBuffers.fold(0, (sum, buf) => sum + buf.length);
+
+    // PCM 데이터 (16-bit)
+    final pcmData = Uint8List(totalSamples * 2);
+    int offset = 0;
+    for (final buffer in audioBuffers) {
+      for (int i = 0; i < buffer.length; i++) {
+        int sample = (buffer[i] * 32767).toInt();
+        pcmData[offset++] = sample & 0xFF;
+        pcmData[offset++] = (sample >> 8) & 0xFF;
+      }
+    }
+
+    // WAV 헤더 생성
+    final header = Uint8List(44);
+    // "RIFF"
+    header[0] = 0x52;
+    header[1] = 0x49;
+    header[2] = 0x46;
+    header[3] = 0x46;
+    // 파일 크기 - 8
+    int fileSize = pcmData.length + 36;
+    header[4] = fileSize & 0xFF;
+    header[5] = (fileSize >> 8) & 0xFF;
+    header[6] = (fileSize >> 16) & 0xFF;
+    header[7] = (fileSize >> 24) & 0xFF;
+    // "WAVE"
+    header[8] = 0x57;
+    header[9] = 0x41;
+    header[10] = 0x56;
+    header[11] = 0x45;
+    // "fmt "
+    header[12] = 0x66;
+    header[13] = 0x6D;
+    header[14] = 0x74;
+    header[15] = 0x20;
+    // Subchunk1Size = 16
+    header[16] = 16;
+    header[17] = 0;
+    header[18] = 0;
+    header[19] = 0;
+    // AudioFormat = 1 (PCM)
+    header[20] = 1;
+    header[21] = 0;
+    // NumChannels = 1 (mono)
+    header[22] = 1;
+    header[23] = 0;
+    // SampleRate = 16000
+    header[24] = 0x80;
+    header[25] = 0x3E;
+    header[26] = 0;
+    header[27] = 0;
+    // ByteRate = 32000
+    header[28] = 0x80;
+    header[29] = 0x7D;
+    header[30] = 0;
+    header[31] = 0;
+    // BlockAlign = 2
+    header[32] = 2;
+    header[33] = 0;
+    // BitsPerSample = 16
+    header[34] = 16;
+    header[35] = 0;
+    // "data"
+    header[36] = 0x64;
+    header[37] = 0x61;
+    header[38] = 0x74;
+    header[39] = 0x61;
+    // Subchunk2Size
+    header[40] = pcmData.length & 0xFF;
+    header[41] = (pcmData.length >> 8) & 0xFF;
+    header[42] = (pcmData.length >> 16) & 0xFF;
+    header[43] = (pcmData.length >> 24) & 0xFF;
+
+    // 헤더 + PCM 데이터 합치기
+    final wavData = Uint8List(header.length + pcmData.length);
+    wavData.setAll(0, header);
+    wavData.setAll(header.length, pcmData);
+    return wavData;
   }
 
   String _encodeAudioToBase64(List<Float32List> buffers) {
