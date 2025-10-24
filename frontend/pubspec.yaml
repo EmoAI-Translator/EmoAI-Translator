@@ -39,6 +39,13 @@ dependencies:
   #to communicate with backend server
   web_socket_channel: ^3.0.1
 
+  #for audio record
+  #record: ^5.1.0
+  web: ^1.1.1
+
+  #for text to speech
+  flutter_tts: ^4.2.3
+
 dev_dependencies:
   flutter_test:
     sdk: flutter

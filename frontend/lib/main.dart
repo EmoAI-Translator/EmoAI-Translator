@@ -1,18 +1,44 @@
 import 'dart:js_interop';
-
 import 'package:flutter/material.dart';
-
 import 'dart:async';
 import 'dart:convert';
 import 'package:web/web.dart' as web;
 import 'package:web_socket_channel/web_socket_channel.dart';
-import 'dart:ui_web' as ui_web;
+// import 'dart:ui_web' as ui_web;
 import 'dart:typed_data';
 
+//For audio, record failed to work on web.
 import 'dart:js_util' as js_util;
+import 'dart:js' as js;
+
+//for tts
+import 'package:flutter_tts/flutter_tts.dart';
 
 void main() {
   runApp(const MyApp());
+}
+
+class TTS {
+  final FlutterTts _tts = FlutterTts();
+
+  Future<void> initializeTTS() async {
+    await _tts.setLanguage('ko-KR'); // 한국어
+    await _tts.setSpeechRate(0.5); // 0.0 ~ 1.0
+    await _tts.setVolume(1.0); // 0.0 ~ 1.0
+    await _tts.setPitch(1.0); // 0.5 ~ 2.0
+  }
+
+  Future<void> speak(String text) async {
+    await _tts.speak(text);
+  }
+
+  Future<void> stop() async {
+    await _tts.stop();
+  }
+
+  Future<void> pause() async {
+    await _tts.pause();
+  }
 }
 
 class MyApp extends StatelessWidget {
@@ -54,6 +80,8 @@ class EmotionDetectionPage extends StatefulWidget {
 }
 
 class _EmotionDetectionPageState extends State<EmotionDetectionPage> {
+  //connect to backend server
+  static const String wsUrl = 'ws://localhost:8000/ws/speech';
   web.MediaStream? _stream;
   Timer? _audioAnalyzerTimer;
   WebSocketChannel? _channel;
@@ -62,56 +90,97 @@ class _EmotionDetectionPageState extends State<EmotionDetectionPage> {
   web.AudioContext? _audioContext;
   web.AnalyserNode? _analyserNode;
   web.MediaStreamAudioSourceNode? _audioSource;
+  web.ScriptProcessorNode? _scriptProcessor;
+  static const int audioSendIntervalMs = 1000;
 
-  bool _isCapturing = false;
-  bool _isCollecting = false;
+  Timer? _audioSendTimer;
+  final List<Float32List> _audioBuffers = []; //buffer
+  // final int _sampleRate = 44100;
+
+  bool _isTransmitting = false;
   String _currentEmotion = 'Unknown';
   String _connectionStatus = 'Disconnected';
-  Map<String, dynamic>? _summaryData;
+  // Map<String, dynamic>? _summaryData;
   double _audioLevel = 0.0; // 0.0 ~ 1.0
+  // final List<Float32List> _buffers = []; //buffer
+  // final AudioRecorder _recorder = AudioRecorder();
+  final List<Float32List> _buffers = [];
+  // Uint8List? _recordedBytes;
+  TTS tts = TTS();
 
-  // TODO: connect to backend server
-  static const String wsUrl = 'ws://localhost:8000/ws/emotion';
+  //variable for recived data
+  String speaker = '';
+  String lang = '';
+  String text = '';
+  String translated = '';
+  String emotion = '';
+  int emotion_scores = 0;
 
   @override
   void initState() {
     super.initState();
-    _initializeAudio();
     _connectWebSocket();
+    _initializeAudioStream().then((_) {
+      debugPrint('Audio stream initialized successfully');
+    });
+    tts.initializeTTS();
   }
 
-  Future<void> _initializeAudio() async {
+  Future<void> _initializeAudioStream() async {
     final constraints = web.MediaStreamConstraints(audio: true.toJS);
+    final jsPromise = web.window.navigator.mediaDevices!.getUserMedia(
+      constraints,
+    );
+    _stream = await js_util.promiseToFuture(jsPromise);
+    debugPrint('🎙️ Microphone access granted');
+
+    _audioContext = web.AudioContext();
+    _audioSource = _audioContext!.createMediaStreamSource(_stream!);
+    _scriptProcessor = _audioContext!.createScriptProcessor(4096, 1, 1);
+
+    js_util.setProperty(
+      _scriptProcessor!,
+      'onaudioprocess',
+      js.allowInterop((event) {
+        try {
+          final inputBuffer = js_util.getProperty(event, 'inputBuffer');
+          final channelData = js_util.callMethod(
+            inputBuffer,
+            'getChannelData',
+            [0],
+          );
+          final length = js_util.getProperty(channelData, 'length') as int;
+          final samples = Float32List(length);
+          for (var i = 0; i < length; i++) {
+            final v = js_util.getProperty(channelData, i) as num;
+            samples[i] = v.toDouble();
+          }
+          _audioBuffers.add(samples);
+        } catch (e) {
+          debugPrint('❌ audio process callback error: $e');
+        }
+      }),
+    );
+    // final constraints = web.MediaStreamConstraints(audio: true.toJS);
     try {
-      // 1️⃣ Promise → Future 변환
       final jsPromise = web.window.navigator.mediaDevices!.getUserMedia(
         constraints,
       );
       _stream = await js_util.promiseToFuture(jsPromise);
-
-      // Initialize audio context for volume analysis
-      _initializeAudioAnalyzer();
-
-      setState(() {});
-      debugPrint('✅ Audio initialized');
     } catch (e) {
-      debugPrint('❌ Audio initialization error: $e');
+      debugPrint('❌ Error accessing microphone: $e');
+      return;
     }
-  }
 
-  void _initializeAudioAnalyzer() {
-    try {
-      _audioContext = web.AudioContext();
-      _analyserNode = _audioContext!.createAnalyser();
-      _analyserNode!.fftSize = 256;
+    //For audio analysis
+    _analyserNode = _audioContext!.createAnalyser();
+    _analyserNode!.fftSize = 256;
+    _audioSource!.connect(_analyserNode!);
 
-      _audioSource = _audioContext!.createMediaStreamSource(_stream!);
-      _audioSource!.connect(_analyserNode!);
-
-      debugPrint('✅ Audio analyzer initialized');
-    } catch (e) {
-      debugPrint('❌ Audio analyzer initialization error: $e');
-    }
+    // Initialize audio context for volume analysis
+    _audioSource!.connect(_scriptProcessor!);
+    _scriptProcessor!.connect(_audioContext!.destination!);
+    _scriptProcessor!.connect(_audioContext!.destination!);
   }
 
   void _startAudioAnalysis() {
@@ -141,7 +210,7 @@ class _EmotionDetectionPageState extends State<EmotionDetectionPage> {
     final jsArray = js_util.jsify(dataArray);
     _analyserNode!.getByteFrequencyData(jsArray);
 
-    // Calculate average volume
+    // Calculate average vocaplume
     double sum = 0;
     for (var i = 0; i < dataArray.length; i++) {
       sum += dataArray[i];
@@ -163,6 +232,7 @@ class _EmotionDetectionPageState extends State<EmotionDetectionPage> {
 
       setState(() {
         _connectionStatus = 'Connected';
+        debugPrint('🔗 Connected to WebSocket at $wsUrl');
       });
 
       _channel!.stream.listen(
@@ -192,74 +262,168 @@ class _EmotionDetectionPageState extends State<EmotionDetectionPage> {
     }
   }
 
+  //  Normally, backend send messages in the following format:
+  // {
+  //     "status": "success",
+  //     "type": "speech",
+  //     "speaker": current_speaker,
+  //     "original": {"lang": lang, "text": text},
+  //     "translated": translated,
+  //     "emotion": emotion,
+  //     "emotion_scores": scores,
+  // }
+
   void _handleWebSocketMessage(dynamic message) {
     try {
       final data = jsonDecode(message);
       final status = data['status'];
       final type = data['type'];
 
-      if (status == 'success' && type == 'realtime') {
+      if (status == 'success' && type == 'speech') {
+        debugPrint('✅ Message from backend: $data');
         setState(() {
           _currentEmotion = data['emotion'] ?? 'Unknown';
-          _isCollecting = data['collecting'] ?? false;
+          // _isCollecting = data['collecting'] ?? false;
+          speaker = data['speaker'] ?? '';
+          lang = data['lang'] ?? '';
+          text = data['text'] ?? '';
+          translated = data['translated'] ?? '';
+          emotion = data['emotion'] ?? ['happy', 'neutral', 'angry', 'sad'];
+          emotion_scores = data['emotion_scores'] ?? 0;
         });
-      } else if (status == 'started' && type == 'collection') {
-        debugPrint('📊 Started collecting for ${data['duration']} seconds');
-      } else if (status == 'success' && type == 'summary') {
-        setState(() {
-          _summaryData = data['data'];
-          _isCollecting = false;
-        });
-        debugPrint('📈 Summary received: $_summaryData');
       } else if (status == 'error') {
-        debugPrint('❌ Backend error: ${data['message']}');
+        debugPrint('❌ Message from backend error: ${data['message']}');
       }
     } catch (e) {
       debugPrint('❌ Message parsing error: $e');
     }
   }
 
-  void _startCapture() {
-    if (_isCapturing || _channel == null) return;
+  Future<void> _startTransmitting() async {
+    if (_isTransmitting || _channel == null) return;
+
+    _audioSendTimer = Timer.periodic(
+      Duration(milliseconds: audioSendIntervalMs),
+      (timer) => _sendAudioData(),
+    );
+
+    // if (await _recorder.hasPermission()) {
+    // 스트림으로 실시간 버퍼 받기
+    // final stream = await _recorder.startStream(
+    //   const RecordConfig(),
+    //   //encoder: AudioEncoder.pcm16bit, sampleRate: 16000
+    // );
+
+    // stream.listen((data) {
+    //   // 받은 버퍼 저장
+    //   final float32 = Float32List.view(
+    //     Uint8List.fromList(data).buffer,
+    //     0,
+    //     data.length ~/ 4,
+    //   );
+    //   _buffers.add(float32);
+    // }, onError: (e) => print('Error: $e'));
+    // // }
 
     setState(() {
-      _isCapturing = true;
+      _isTransmitting = true;
     });
 
     _startAudioAnalysis();
 
-    debugPrint('▶️ Started capturing frames');
+    debugPrint('▶️ Started transmitting');
   }
 
-  void _stopCapture() {
+  // Formet to send to backend
+  // {
+  //     "command": "transcribe",
+  //     "audio": "<base64_encoded_audio_string>",
+  //     "target_lang": "en"
+  // }
+
+  Future<void> _stopTransmitting() async {
+    if (!_isTransmitting) return;
+    _audioSendTimer?.cancel();
+    debugPrint('⏹️ Stopped transmitting');
     _stopAudioAnalysis();
     setState(() {
-      _isCapturing = false;
+      _isTransmitting = false;
     });
-    debugPrint('⏹️ Stopped capturing frames');
+    // debugPrint('⏹️ Stopped capturing frames');
 
-    if (_channel != null) {
-      final message = jsonEncode({'command': 'stop'});
-      _channel!.sink.add(message);
+    // await _recorder.stop();
+    // final base64String = _encodeAudioToBase64(_buffers);
+    // _buffers.clear();
+
+    // if (_recordedBytes == null || _recordedBytes!.isEmpty) {
+    //   debugPrint('⚠️ No audio captured');
+    //   return;
+    // }
+
+    if (_buffers.isEmpty || _channel == null) {
+      // _sendAudio();
+      if (_buffers.isEmpty || _channel == null) return;
+
+      final buffersToSend = _buffers.toList();
+      _buffers.clear();
+
+      final base64Audio = _encodeAudioToBase64(buffersToSend);
+
+      _channel!.sink.add(
+        jsonEncode({
+          'command': 'transcribe', // 서버와 약속된 오디오 처리 명령어
+          'audio': base64Audio,
+          'target_lang': 'en',
+        }),
+      );
       debugPrint('🛑 Sent stop command to backend');
     }
   }
 
-  void _startCollection(int duration) {
-    if (_channel == null) return;
+  // void _sendAudio() {
+  //   if (_buffers.isEmpty || _channel == null) return;
 
-    final message = jsonEncode({
-      'command': 'start_collect',
-      'duration': duration,
-    });
+  //   final buffersToSend = _buffers.toList();
+  //   _buffers.clear();
 
-    _channel!.sink.add(message);
+  //   final base64Audio = _encodeAudioToBase64(buffersToSend);
 
-    setState(() {
-      _summaryData = null;
-    });
+  //   _channel!.sink.add(
+  //     jsonEncode({
+  //       'command': 'transcribe', // 서버와 약속된 오디오 처리 명령어
+  //       'audio': base64Audio,
+  //       'target_lang': 'en',
+  //     }),
+  //   );
+  // }
 
-    debugPrint('📊 Requested emotion collection for $duration seconds');
+  void _sendAudioData() {
+    if (_audioBuffers.isEmpty || _channel == null) return;
+
+    final buffersToSend = List<Float32List>.from(_audioBuffers);
+    _audioBuffers.clear();
+
+    final base64Audio = _encodeAudioToBase64(buffersToSend);
+
+    _channel!.sink.add(
+      jsonEncode({
+        'command': 'transcribe',
+        'audio': base64Audio,
+        'target_lang': 'en',
+      }),
+    );
+  }
+
+  String _encodeAudioToBase64(List<Float32List> buffers) {
+    final pcmData = BytesBuilder();
+    for (final buffer in buffers) {
+      for (final sample in buffer) {
+        final pcm16 = (sample.clamp(-1.0, 1.0) * 32767).toInt();
+        pcmData.addByte(pcm16 & 0xFF);
+        pcmData.addByte((pcm16 >> 8) & 0xFF);
+      }
+    }
+    return base64Encode(pcmData.toBytes());
   }
 
   @override
@@ -345,44 +509,68 @@ class _EmotionDetectionPageState extends State<EmotionDetectionPage> {
                 const SizedBox(height: 60),
 
                 // Central circular button with audio-reactive glow
-                GestureDetector(
-                  onTap: () {
-                    if (_isCapturing) {
-                      _stopCapture();
+                // GestureDetector(
+                //   onTap: () {
+                //     if (_isTransmitting) {
+                //       _stopTransmitting();
+                //     } else {
+                //       if (_channel != null) {
+                //         _startTransmitting();
+                //       }
+                //     }
+                //   },
+                //   child: AnimatedContainer(
+                //     duration: const Duration(milliseconds: 100),
+                //     width: buttonSize,
+                //     height: buttonSize,
+                //     decoration: BoxDecoration(
+                //       shape: BoxShape.circle,
+                //       color: _isTransmitting ? Colors.red : Colors.blue,
+                //       boxShadow: [
+                //         BoxShadow(
+                //           color: (_isTransmitting ? Colors.red : Colors.blue)
+                //               .withOpacity(0.6),
+                //           blurRadius: shadowRadius,
+                //           spreadRadius: shadowRadius / 2,
+                //         ),
+                //       ],
+                //     ),
+                //     child: Icon(
+                //       _isTransmitting ? Icons.stop : Icons.mic,
+                //       color: Colors.white,
+                //       size: 80,
+                //     ),
+                //   ),
+                // ),
+                ElevatedButton(
+                  onPressed: () {
+                    if (_isTransmitting) {
+                      _stopTransmitting();
                     } else {
                       if (_channel != null) {
-                        _startCapture();
+                        _startTransmitting();
                       }
                     }
                   },
-                  child: AnimatedContainer(
-                    duration: const Duration(milliseconds: 100),
-                    width: buttonSize,
-                    height: buttonSize,
-                    decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      color: _isCapturing ? Colors.red : Colors.blue,
-                      boxShadow: [
-                        BoxShadow(
-                          color: (_isCapturing ? Colors.red : Colors.blue)
-                              .withOpacity(0.6),
-                          blurRadius: shadowRadius,
-                          spreadRadius: shadowRadius / 2,
-                        ),
-                      ],
-                    ),
-                    child: Icon(
-                      _isCapturing ? Icons.stop : Icons.mic,
-                      color: Colors.white,
-                      size: 80,
-                    ),
+                  style: ElevatedButton.styleFrom(
+                    shape: const CircleBorder(),
+                    padding: EdgeInsets.all(buttonSize / 3),
+                    backgroundColor: _isTransmitting ? Colors.red : Colors.blue,
+                    shadowColor: (_isTransmitting ? Colors.red : Colors.blue)
+                        .withOpacity(0.6),
+                    elevation: shadowRadius / 2,
+                  ),
+                  child: Icon(
+                    _isTransmitting ? Icons.stop : Icons.mic,
+                    color: Colors.white,
+                    size: 80,
                   ),
                 ),
 
                 const SizedBox(height: 20),
 
                 // Audio level indicator
-                if (_isCapturing)
+                if (_isTransmitting)
                   Container(
                     padding: const EdgeInsets.symmetric(
                       horizontal: 16,
@@ -424,40 +612,44 @@ class _EmotionDetectionPageState extends State<EmotionDetectionPage> {
                     ),
                   ),
 
+                Text(
+                  text,
+                  style: const TextStyle(color: Colors.white, fontSize: 14),
+                ),
                 const SizedBox(height: 40),
-                // Collection status
-                if (_isCollecting)
-                  Container(
-                    margin: const EdgeInsets.only(top: 20),
-                    padding: const EdgeInsets.all(16),
-                    decoration: BoxDecoration(
-                      color: Colors.orange.withOpacity(0.3),
-                      borderRadius: BorderRadius.circular(12),
-                      border: Border.all(color: Colors.orange, width: 2),
-                    ),
-                    child: const Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        SizedBox(
-                          width: 20,
-                          height: 20,
-                          child: CircularProgressIndicator(
-                            strokeWidth: 2,
-                            color: Colors.orange,
-                          ),
-                        ),
-                        SizedBox(width: 12),
-                        Text(
-                          'Collecting emotions...',
-                          style: TextStyle(
-                            color: Colors.orange,
-                            fontSize: 14,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
+                // 콜렉팅 중에만 나오게
+                // if (_isTransmitting)
+                //   Container(
+                //     margin: const EdgeInsets.only(top: 20),
+                //     padding: const EdgeInsets.all(16),
+                //     decoration: BoxDecoration(
+                //       color: Colors.orange.withOpacity(0.3),
+                //       borderRadius: BorderRadius.circular(12),
+                //       border: Border.all(color: Colors.orange, width: 2),
+                //     ),
+                //     child: const Row(
+                //       mainAxisSize: MainAxisSize.min,
+                //       children: [
+                //         SizedBox(
+                //           width: 20,
+                //           height: 20,
+                //           child: CircularProgressIndicator(
+                //             strokeWidth: 2,
+                //             color: Colors.orange,
+                //           ),
+                //         ),
+                //         SizedBox(width: 12),
+                //         Text(
+                //           'Collecting emotions...',
+                //           style: TextStyle(
+                //             color: Colors.orange,
+                //             fontSize: 14,
+                //             fontWeight: FontWeight.bold,
+                //           ),
+                //         ),
+                //       ],
+                //     ),
+                //   ),
               ],
             ),
           ),
@@ -475,7 +667,7 @@ class _EmotionDetectionPageState extends State<EmotionDetectionPage> {
                   borderRadius: BorderRadius.circular(12),
                 ),
                 child: Text(
-                  _isCapturing
+                  _isTransmitting
                       ? 'Tap to stop detection'
                       : 'Tap to start detection',
                   style: const TextStyle(color: Colors.white70, fontSize: 14),
