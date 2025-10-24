@@ -28,6 +28,24 @@ class TTS {
     await _tts.setPitch(1.0); // 0.5 ~ 2.0
   }
 
+  Future<void> setLanguage(String languageCode) async {
+    await _tts.setLanguage(languageCode);
+  }
+
+  Future<void> setEmotion(String emotion) async {
+    if (emotion == 'happy') {
+      await _tts.setPitch(1.2);
+    } else if (emotion == 'sad') {
+      await _tts.setPitch(0.8);
+      await _tts.setSpeechRate(0.8);
+    } else if (emotion == 'angry') {
+      await _tts.setPitch(1.5);
+      await _tts.setSpeechRate(1.5);
+    } else {
+      await _tts.setPitch(1.0);
+    }
+  }
+
   Future<void> speak(String text) async {
     await _tts.speak(text);
   }
@@ -108,13 +126,35 @@ class _EmotionDetectionPageState extends State<EmotionDetectionPage> {
   // Uint8List? _recordedBytes;
   TTS tts = TTS();
 
+  // Return Example (Backend → Frontend)
+  //   {
+  //       "status": "success",
+  //       "type": "speech",
+  //       "speaker": "Speaker 1",
+  //       "original": {
+  //           "lang": "ko",
+  //           "text": "안녕하세요"
+  //       },
+  //       "translated": {
+  //           "timestamp": datetime.utcnow().isoformat(),
+  //           "lang": lang,
+  //           "text": text,
+  //       },
+  //       "emotion": "happy",
+  //       "emotion_scores": {"happy": 0.95, "sad": 0.02, ...}
+  //   }
+
   //variable for recived data
   String speaker = '';
-  String lang = '';
-  String text = '';
-  String translated = '';
+  Map<String, dynamic> original = {'lang': '', 'text': ''};
+  Map<String, dynamic> translated = {'timestamp': '', 'lang': '', 'text': ''};
   String emotion = '';
-  int emotion_scores = 0;
+  Map<String, dynamic> emotion_scores = {
+    'happy': 0.0,
+    'sad': 0.0,
+    'angry': 0.0,
+    'neutral': 0.0,
+  };
 
   @override
   void initState() {
@@ -278,21 +318,25 @@ class _EmotionDetectionPageState extends State<EmotionDetectionPage> {
   void _handleWebSocketMessage(dynamic message) {
     try {
       final data = jsonDecode(message);
-      final status = data['status'];
-      final type = data['type'];
+      final status = data['status'] as String?;
+      final type = data['type'] as String?;
 
       if (status == 'success' && type == 'speech') {
         debugPrint('✅ Message from backend: $data');
         setState(() {
-          _currentEmotion = data['emotion'] ?? 'Unknown';
-          // _isCollecting = data['collecting'] ?? false;
-          speaker = data['speaker'] ?? '';
-          lang = data['lang'] ?? '';
-          text = data['text'] ?? '';
-          translated = data['translated'] ?? '';
-          emotion = data['emotion'] ?? ['happy', 'neutral', 'angry', 'sad'];
-          emotion_scores = data['emotion_scores'] ?? 0;
+          speaker = data['speaker'] ?? 'Unknown';
+          // final original_text = jsonDecode(data['original']);
+          original = data['original'] ?? {};
+
+          // final original_translated = jsonDecode(data['translated']);
+          translated = data['translated'] ?? {};
+          emotion = data['emotion'] ?? '';
+          emotion_scores = data['emotion_scores'] ?? {};
         });
+
+        debugPrint(
+          '🗣️ Speaker: $speaker, Original: ${original['text']}, Translated: ${translated['text']}, Emotion: $emotion',
+        );
       } else if (status == 'error') {
         debugPrint('❌ Message from backend error: ${data['message']}');
       }
@@ -384,7 +428,8 @@ class _EmotionDetectionPageState extends State<EmotionDetectionPage> {
     final buffersToSend = _buffers.toList();
     _buffers.clear();
 
-    final base64Audio = _encodeAudioToBase64(buffersToSend);
+    final base64Audio = base64Encode(_encodeWav(buffersToSend));
+    ;
 
     _channel!.sink.add(
       jsonEncode({
@@ -396,42 +441,8 @@ class _EmotionDetectionPageState extends State<EmotionDetectionPage> {
     debugPrint('🛑 Sent stop command to backend');
   }
 
-  // void _sendAudio() {
-  //   if (_buffers.isEmpty || _channel == null) return;
-
-  //   final buffersToSend = _buffers.toList();
-  //   _buffers.clear();
-
-  //   final base64Audio = _encodeAudioToBase64(buffersToSend);
-
-  //   _channel!.sink.add(
-  //     jsonEncode({
-  //       'command': 'transcribe', // 서버와 약속된 오디오 처리 명령어
-  //       'audio': base64Audio,
-  //       'target_lang': 'en',
-  //     }),
-  //   );
-  // }
-
-  void _sendAudioData() {
-    if (_audioBuffers.isEmpty || _channel == null) return;
-
-    final buffersToSend = List<Float32List>.from(_audioBuffers);
-    _audioBuffers.clear();
-
-    final base64Audio = _encodeAudioToBase64(buffersToSend);
-
-    _channel!.sink.add(
-      jsonEncode({
-        'command': 'transcribe',
-        'audio': base64Audio,
-        'target_lang': 'en',
-      }),
-    );
-  }
-
   Uint8List _encodeWav(List<Float32List> audioBuffers) {
-    const int sampleRate = 16000;
+    // const int sampleRate = 16000;
     int totalSamples = audioBuffers.fold(0, (sum, buf) => sum + buf.length);
 
     // PCM 데이터 (16-bit)
@@ -542,7 +553,7 @@ class _EmotionDetectionPageState extends State<EmotionDetectionPage> {
 
   @override
   Widget build(BuildContext context) {
-    final screenSize = MediaQuery.of(context).size;
+    // final screenSize = MediaQuery.of(context).size;
     final buttonSize = 200.0;
 
     // Calculate shadow radius based on audio level
@@ -597,7 +608,10 @@ class _EmotionDetectionPageState extends State<EmotionDetectionPage> {
 
                 // Emotion display
                 Text(
-                  _currentEmotion,
+                  // _currentEmotion,
+                  original['lang'] == null
+                      ? ''
+                      : '[${original['lang']!.toUpperCase()}] ${original['text']!}',
                   style: const TextStyle(
                     color: Colors.white,
                     fontSize: 32,
@@ -712,7 +726,7 @@ class _EmotionDetectionPageState extends State<EmotionDetectionPage> {
                   ),
 
                 Text(
-                  text,
+                  translated['text'] == null ? '' : translated['text']!,
                   style: const TextStyle(color: Colors.white, fontSize: 14),
                 ),
                 const SizedBox(height: 40),
