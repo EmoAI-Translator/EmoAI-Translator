@@ -58,6 +58,9 @@ class TTS {
   }
 }
 
+//supported lanuages, right now, lanuage is hardcoded in surver side
+enum Language { ko, en }
+
 class MyApp extends StatelessWidget {
   const MyApp({super.key});
 
@@ -116,8 +119,12 @@ class _EmotionDetectionPageState extends State<EmotionDetectionPage> {
   bool recorderSet = false;
 
   final List<Float32List> _buffers = [];
-  // Uint8List? _recordedBytes;
   TTS tts = TTS();
+
+  //for frontend
+  List<String> Speaker1 = [];
+  List<String> Speaker2 = [];
+  bool _initialstate = true;
 
   // Return Example (Backend → Frontend)
   //   {
@@ -374,18 +381,28 @@ class _EmotionDetectionPageState extends State<EmotionDetectionPage> {
       if (status == 'success' && type == 'speech') {
         debugPrint('✅ Message from backend: $data');
         setState(() {
-          speaker = data['speaker'] ?? 'Unknown';
-          // final original_text = jsonDecode(data['original']);
+          speaker = data['speaker'] ?? 'Speaker 1';
           original = data['original'] ?? {};
-
-          // final original_translated = jsonDecode(data['translated']);
           translated = data['translated'] ?? {};
           emotion = data['emotion'] ?? '';
           emotion_scores = data['emotion_scores'] ?? {};
+
+          tts.setEmotion(emotion);
+          tts.speak(translated['translated_text'] ?? '');
+
+          if (speaker == 'Speaker 1') {
+            Speaker1.add(
+              "${translated['timestamp'] ?? ''}: ${translated['translated_text'] ?? ''}",
+            );
+          } else {
+            Speaker2.add(
+              "${translated['timestamp'] ?? ''}: ${translated['translated_text'] ?? ''}",
+            );
+          }
         });
 
         debugPrint(
-          '🗣️ Speaker: $speaker, Original: ${original['text']}, Translated: ${translated['text']}, Emotion: $emotion',
+          '🗣️ Speaker: $speaker, Original: ${original['text']}, Translated: ${translated['translated_text']}, Emotion: $emotion',
         );
       } else if (status == 'error') {
         debugPrint('❌ Message from backend error: ${data['message']}');
@@ -425,6 +442,7 @@ class _EmotionDetectionPageState extends State<EmotionDetectionPage> {
     );
     setState(() {
       _isTransmitting = false;
+      _initialstate = false;
     });
   }
 
@@ -574,18 +592,18 @@ class _EmotionDetectionPageState extends State<EmotionDetectionPage> {
 
                             const SizedBox(height: 40),
 
-                            // Emotion display
-                            Text(
-                              // _currentEmotion,
-                              original['lang'] == null
-                                  ? ''
-                                  : '[${original['lang']!.toUpperCase()}] ${original['text']!}',
-                              style: const TextStyle(
-                                color: Colors.white,
-                                fontSize: 32,
-                                fontWeight: FontWeight.bold,
-                              ),
-                            ),
+                            // // Emotion display
+                            // Text(
+                            //   // _currentEmotion,
+                            //   original['lang'] == null
+                            //       ? ''
+                            //       : '[${original['lang']!.toUpperCase()}] ${original['text']!}',
+                            //   style: const TextStyle(
+                            //     color: Colors.white,
+                            //     fontSize: 32,
+                            //     fontWeight: FontWeight.bold,
+                            //   ),
+                            // ),
                             const SizedBox(height: 60),
                             Stack(
                               alignment: Alignment.center,
@@ -644,51 +662,6 @@ class _EmotionDetectionPageState extends State<EmotionDetectionPage> {
                               ],
                             ),
                             const SizedBox(height: 20),
-                            // Audio level indicator
-                            if (_isTransmitting)
-                              Container(
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: 16,
-                                  vertical: 8,
-                                ),
-                                decoration: BoxDecoration(
-                                  color: Colors.black54,
-                                  borderRadius: BorderRadius.circular(20),
-                                ),
-                                child: Column(
-                                  children: [
-                                    Text(
-                                      'Audio Level: ${(_audioLevel * 100).toStringAsFixed(0)}%',
-                                      style: const TextStyle(
-                                        color: Colors.white,
-                                        fontSize: 14,
-                                      ),
-                                    ),
-                                    const SizedBox(height: 8),
-                                    Container(
-                                      width: 200,
-                                      height: 4,
-                                      decoration: BoxDecoration(
-                                        color: Colors.white24,
-                                        borderRadius: BorderRadius.circular(2),
-                                      ),
-                                      child: FractionallySizedBox(
-                                        alignment: Alignment.centerLeft,
-                                        widthFactor: _audioLevel,
-                                        child: Container(
-                                          decoration: BoxDecoration(
-                                            color: Colors.blue,
-                                            borderRadius: BorderRadius.circular(
-                                              2,
-                                            ),
-                                          ),
-                                        ),
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ),
-
                             Text(
                               translated['text'] == null
                                   ? ''
@@ -722,53 +695,82 @@ class _EmotionDetectionPageState extends State<EmotionDetectionPage> {
                     ],
                   ),
                 ),
-                Container(
-                  width: MediaQuery.of(context).size.width * 0.4,
-                  padding: const EdgeInsets.all(12),
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                if (!_initialstate)
+                  Container(
+                    width: MediaQuery.of(context).size.width * 0.4,
+                    padding: const EdgeInsets.all(12),
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
 
-                    children: [
-                      Expanded(
-                        child: Container(
-                          decoration: BoxDecoration(
-                            color: Colors.blue.withOpacity(0.2),
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                          padding: const EdgeInsets.all(16),
-                          alignment: Alignment.center,
-                          child: const Text(
-                            'Speaker 1',
-                            style: TextStyle(
-                              color: Colors.white,
-                              fontSize: 20,
-                              fontWeight: FontWeight.bold,
+                      children: [
+                        Expanded(
+                          child: Container(
+                            decoration: BoxDecoration(
+                              color: Colors.blue.withOpacity(0.2),
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            child: ListView.builder(
+                              padding: const EdgeInsets.all(16),
+                              itemCount: Speaker1.length,
+                              itemBuilder: (context, index) {
+                                final message = Speaker1[index];
+                                return Container(
+                                  margin: const EdgeInsets.symmetric(
+                                    vertical: 6,
+                                  ),
+                                  padding: const EdgeInsets.all(12),
+                                  decoration: BoxDecoration(
+                                    color: Colors.grey[800],
+                                    borderRadius: BorderRadius.circular(12),
+                                  ),
+                                  child: Text(
+                                    message,
+                                    style: const TextStyle(
+                                      color: Colors.white,
+                                      fontSize: 16,
+                                    ),
+                                  ),
+                                );
+                              },
                             ),
                           ),
                         ),
-                      ),
-                      const SizedBox(height: 16),
-                      Expanded(
-                        child: Container(
-                          decoration: BoxDecoration(
-                            color: Colors.green.withOpacity(0.2),
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                          padding: const EdgeInsets.all(16),
-                          alignment: Alignment.center,
-                          child: const Text(
-                            'Speaker 2',
-                            style: TextStyle(
-                              color: Colors.white,
-                              fontSize: 20,
-                              fontWeight: FontWeight.bold,
+                        const SizedBox(height: 16),
+                        Expanded(
+                          child: Container(
+                            decoration: BoxDecoration(
+                              color: Colors.blue.withOpacity(0.2),
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            child: ListView.builder(
+                              padding: const EdgeInsets.all(16),
+                              itemCount: Speaker2.length,
+                              itemBuilder: (context, index) {
+                                final message = Speaker2[index];
+                                return Container(
+                                  margin: const EdgeInsets.symmetric(
+                                    vertical: 6,
+                                  ),
+                                  padding: const EdgeInsets.all(12),
+                                  decoration: BoxDecoration(
+                                    color: Colors.grey[800],
+                                    borderRadius: BorderRadius.circular(12),
+                                  ),
+                                  child: Text(
+                                    message,
+                                    style: const TextStyle(
+                                      color: Colors.white,
+                                      fontSize: 16,
+                                    ),
+                                  ),
+                                );
+                              },
                             ),
                           ),
                         ),
-                      ),
-                    ],
+                      ],
+                    ),
                   ),
-                ),
               ],
             ),
           ),
