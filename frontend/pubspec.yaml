@@ -40,7 +40,7 @@ dependencies:
   web_socket_channel: ^3.0.1
 
   #for audio record
-  #record: ^5.1.0
+  # record: ^5.1.0
   web: ^1.1.1
 
   #for text to speech
