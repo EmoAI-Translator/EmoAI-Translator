@@ -392,17 +392,17 @@ class _EmotionDetectionPageState extends State<EmotionDetectionPage> {
 
           if (speaker == 'Speaker 1') {
             Speaker1.add(
-              "${translated['timestamp'] ?? ''}: ${translated['translated_text'] ?? ''}",
+              "${translated['timestamp'] ?? ''}: ${translated['text'] ?? ''}",
             );
           } else {
             Speaker2.add(
-              "${translated['timestamp'] ?? ''}: ${translated['translated_text'] ?? ''}",
+              "${translated['timestamp'] ?? ''}: ${translated['text'] ?? ''}",
             );
           }
         });
 
         debugPrint(
-          '🗣️ Speaker: $speaker, Original: ${original['text']}, Translated: ${translated['translated_text']}, Emotion: $emotion',
+          '🗣️ Speaker: $speaker, Original: ${original['text']}, Translated: ${translated['text']}, Emotion: $emotion',
         );
       } else if (status == 'error') {
         debugPrint('❌ Message from backend error: ${data['message']}');
@@ -437,7 +437,7 @@ class _EmotionDetectionPageState extends State<EmotionDetectionPage> {
       jsonEncode({
         'command': 'transcribe', // 서버와 약속된 오디오 처리 명령어
         'audio': finalformWav,
-        "target_lang": "ko",
+        "target_lang": "en",
       }),
     );
     setState(() {
