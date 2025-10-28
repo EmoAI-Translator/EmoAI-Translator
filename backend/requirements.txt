@@ -32,4 +32,7 @@ PyAudio>=0.2.14
 openai-whisper>=20250625
 transformers
 librosa
-TTS
+
+# === 신규/수정 패키지 ===
+wrapt>=1.15.0           # Python 3.11 이상 호환
+gTTS>=2.5.1             # Google Text-to-Speech (대체 TTS)
