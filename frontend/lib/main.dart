@@ -62,7 +62,7 @@ class TTS {
 }
 
 //supported lanuages, right now, lanuage is hardcoded in surver side
-enum Language { ko, en }
+// enum Language { ko, en }
 
 class MyApp extends StatelessWidget {
   const MyApp({super.key});
@@ -131,6 +131,11 @@ class _EmotionDetectionPageState extends State<EmotionDetectionPage> {
   String _currentLanguage1 = 'en';
   String _currentLanguage2 = 'ko';
 
+  //For auto termination
+  late Duration _silenceDuration;
+  final double _silenceThreshold = 0.1; // 임계값 (0.0~1.0), 필요시 조정
+  final Duration _silenceDurationLimit = const Duration(seconds: 3);
+
   // Return Example (Backend → Frontend)
   //   {
   //       "status": "success",
@@ -169,6 +174,7 @@ class _EmotionDetectionPageState extends State<EmotionDetectionPage> {
       debugPrint('Audio stream initialized successfully');
     });
     tts.initializeTTS();
+    _silenceDuration = Duration.zero;
   }
 
   Future<void> _initializeAudioStream() async {
@@ -328,6 +334,18 @@ class _EmotionDetectionPageState extends State<EmotionDetectionPage> {
       // Smooth the audio level changes
       _audioLevel = (_audioLevel * 0.7) + (normalizedLevel * 0.3);
     });
+
+    if (_audioLevel < _silenceThreshold) {
+      _silenceDuration += const Duration(milliseconds: 50);
+
+      if (_silenceDuration >= _silenceDurationLimit) {
+        debugPrint('🔇 Silence detected for 3 seconds. Auto-stopping...');
+        stopRecordingAndAnalysis();
+      }
+    } else {
+      // 다시 음성 감지되면 리셋
+      _silenceDuration = Duration.zero;
+    }
   }
 
   void _connectWebSocket() {
@@ -475,7 +493,7 @@ class _EmotionDetectionPageState extends State<EmotionDetectionPage> {
       jsonEncode({
         'command': 'transcribe', // 서버와 약속된 오디오 처리 명령어
         'audio': finalformWav,
-        "target_lang": "en",
+        "target_lang": _currentLanguage2,
       }),
     );
     setState(() {
@@ -594,17 +612,19 @@ class _EmotionDetectionPageState extends State<EmotionDetectionPage> {
                         child: Column(
                           // mainAxisAlignment: MainAxisAlignmen  t.center,
                           children: [
+                            const SizedBox(height: 8),
+
                             Row(
                               mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                               children: [
                                 ElevatedButton(
                                   onPressed: () {
                                     setState(() {
-                                      _currentLanguage1 = 'ko';
+                                      _currentLanguage2 = 'ko';
                                     });
                                   },
                                   style: ElevatedButton.styleFrom(
-                                    backgroundColor: _currentLanguage1 == 'ko'
+                                    backgroundColor: _currentLanguage2 == 'ko'
                                         ? Colors.blue
                                         : Colors.grey,
                                   ),
@@ -616,11 +636,11 @@ class _EmotionDetectionPageState extends State<EmotionDetectionPage> {
                                 ElevatedButton(
                                   onPressed: () {
                                     setState(() {
-                                      _currentLanguage1 = 'en';
+                                      _currentLanguage2 = 'en';
                                     });
                                   },
                                   style: ElevatedButton.styleFrom(
-                                    backgroundColor: _currentLanguage1 == 'en'
+                                    backgroundColor: _currentLanguage2 == 'en'
                                         ? Colors.blue
                                         : Colors.grey,
                                   ),
@@ -632,11 +652,11 @@ class _EmotionDetectionPageState extends State<EmotionDetectionPage> {
                                 ElevatedButton(
                                   onPressed: () {
                                     setState(() {
-                                      _currentLanguage1 = 'jp';
+                                      _currentLanguage2 = 'jp';
                                     });
                                   },
                                   style: ElevatedButton.styleFrom(
-                                    backgroundColor: _currentLanguage1 == 'jp'
+                                    backgroundColor: _currentLanguage2 == 'jp'
                                         ? Colors.blue
                                         : Colors.grey,
                                   ),
@@ -648,11 +668,11 @@ class _EmotionDetectionPageState extends State<EmotionDetectionPage> {
                                 ElevatedButton(
                                   onPressed: () {
                                     setState(() {
-                                      _currentLanguage1 = 'cn';
+                                      _currentLanguage2 = 'cn';
                                     });
                                   },
                                   style: ElevatedButton.styleFrom(
-                                    backgroundColor: _currentLanguage1 == 'cn'
+                                    backgroundColor: _currentLanguage2 == 'cn'
                                         ? Colors.blue
                                         : Colors.grey,
                                   ),
