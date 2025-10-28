@@ -1,5 +1,6 @@
 import base64
 import tempfile
+
 # import cv2
 import numpy as np
 import asyncio
@@ -47,6 +48,7 @@ LANG_MAP = {
     "es": "es",  # 스페인어
 }
 
+
 def generate_tts(text, lang="en"):
     """
     주어진 텍스트와 언어에 맞는 Google TTS 음성을 base64로 반환
@@ -89,6 +91,7 @@ async def speech_websocket(websocket: WebSocket):
             "timestamp": datetime.utcnow().isoformat(),
             "lang": lang,
             "text": text,
+            "tts_audio_b64": "<base64_encoded_tts_audio_string>"
         },
         "emotion": "happy",
         "emotion_scores": {"happy": 0.95, "sad": 0.02, ...}
@@ -141,10 +144,10 @@ async def speech_websocket(websocket: WebSocket):
                     translated_payload = {
                         "timestamp": translated.get("timestamp"),
                         "lang": target_lang,
-                        "text": translated.get("text")
-                        or translated.get("text")
-                        or translated.get("original_text"),
-                        "tts_audio_b64": generate_tts(text, lang=target_lang),
+                        "text": translated.get("translated_text"),
+                        "tts_audio_b64": generate_tts(
+                            translated.get("translated_text"), lang=target_lang
+                        ),
                     }
 
                     await websocket.send_json(

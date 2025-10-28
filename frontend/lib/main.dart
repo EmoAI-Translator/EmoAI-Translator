@@ -396,34 +396,49 @@ class _EmotionDetectionPageState extends State<EmotionDetectionPage> {
   // }
 
   void playAudioBase64(String base64Audio) {
-    final audioBytes = base64Decode(base64Audio);
+    try {
+      // Base64 → Uint8List 변환
+      final audioBytes = base64Decode(base64Audio);
 
-    // Uint8Array 생성
-    final uint8Array = js_util.callConstructor(
-      js_util.getProperty(js_util.globalThis, 'Uint8Array') as Object,
-      [audioBytes],
-    );
+      // JS Uint8Array 생성
+      final uint8Array = js_util.callConstructor(
+        js_util.getProperty(js_util.globalThis, 'Uint8Array') as Object,
+        [js_util.jsify(audioBytes)],
+      );
 
-    // Blob 생성
-    final blob = js_util.callConstructor(
-      js_util.getProperty(js_util.globalThis, 'Blob') as Object,
-      [
-        js_util.jsify([uint8Array]),
-        js_util.jsify({'type': 'audio/wav'}),
-      ],
-    );
+      // Blob 생성 (audio/wav MIME type)
+      final blob = js_util.callConstructor(
+        js_util.getProperty(js_util.globalThis, 'Blob') as Object,
+        [
+          js_util.jsify([uint8Array]),
+          js_util.jsify({'type': 'audio/wav'}),
+        ],
+      );
 
-    // Object URL 생성
-    final url = js_util.callMethod(
-      js_util.getProperty(js_util.globalThis, 'URL'),
-      'createObjectURL',
-      [blob],
-    );
+      // Object URL 생성
+      final url =
+          js_util.callMethod(
+                js_util.getProperty(js_util.globalThis, 'URL'),
+                'createObjectURL',
+                [blob],
+              )
+              as String;
 
-    // AudioElement 생성 후 src 할당
-    final audio = web.AudioElement();
-    audio.src = url as String;
-    audio.play();
+      // AudioElement 생성 및 재생 준비
+      final audio = web.AudioElement();
+      audio.src = url;
+
+      // 로드 완료 시 재생
+      audio.onCanPlayThrough.listen((_) {
+        final playResult = js_util.callMethod(audio, 'play', []);
+        // JS Promise 결과 캐치 (에러 무시 방지)
+        js_util.promiseToFuture(playResult).catchError((error) {
+          print('Audio playback failed: $error');
+        });
+      });
+    } catch (e) {
+      print('❌ Audio playback error: $e');
+    }
   }
 
   void _handleWebSocketMessage(dynamic message) {
@@ -442,8 +457,9 @@ class _EmotionDetectionPageState extends State<EmotionDetectionPage> {
           emotion_scores = data['emotion_scores'] ?? {};
 
           // Play TTS audio if available
-          final audioB64 = translated['audio_b64'];
+          final audioB64 = translated['tts_audio_b64'];
           if (audioB64 != null) {
+            debugPrint('🔊 Playing TTS audio for $speaker');
             playAudioBase64(audioB64);
           }
 
