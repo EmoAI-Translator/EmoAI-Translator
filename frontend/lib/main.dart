@@ -133,7 +133,7 @@ class _EmotionDetectionPageState extends State<EmotionDetectionPage> {
 
   //For auto termination
   late Duration _silenceDuration;
-  final double _silenceThreshold = 0.1; // 임계값 (0.0~1.0), 필요시 조정
+  final double _silenceThreshold = 0.3; // 임계값 (0.0~1.0), 필요시 조정
   final Duration _silenceDurationLimit = const Duration(seconds: 3);
 
   // Return Example (Backend → Frontend)
@@ -307,7 +307,10 @@ class _EmotionDetectionPageState extends State<EmotionDetectionPage> {
 
     _audioAnalyzerTimer?.cancel();
     _audioAnalyzerTimer = null;
-    setState(() => _audioLevel = 0.0);
+    setState(() {
+      _audioLevel = 0.0;
+      _isTransmitting = false;
+    });
 
     debugPrint('⏹️ Stopped audio analysis');
     return wavFromBuffers(_audioBuffers);
@@ -333,6 +336,7 @@ class _EmotionDetectionPageState extends State<EmotionDetectionPage> {
     setState(() {
       // Smooth the audio level changes
       _audioLevel = (_audioLevel * 0.7) + (normalizedLevel * 0.3);
+      _audioLevel = _audioLevel;
     });
 
     if (_audioLevel < _silenceThreshold) {
