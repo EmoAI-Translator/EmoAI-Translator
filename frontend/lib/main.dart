@@ -133,7 +133,7 @@ class _EmotionDetectionPageState extends State<EmotionDetectionPage> {
 
   //For auto termination
   late Duration _silenceDuration;
-  final double _silenceThreshold = 0.3; // 임계값 (0.0~1.0), 필요시 조정
+  final double _silenceThreshold = 0.1; // 임계값 (0.0~1.0), 필요시 조정
   final Duration _silenceDurationLimit = const Duration(seconds: 3);
 
   // Return Example (Backend → Frontend)
@@ -237,8 +237,9 @@ class _EmotionDetectionPageState extends State<EmotionDetectionPage> {
 
   Future<void> _startAudioAnalysis() async {
     _audioBuffers.clear();
+    _audioLevel = 0.0;
+    _silenceDuration = Duration.zero;
 
-    // 1. 마이크 접근
     final constraints = web.MediaStreamConstraints(audio: true.toJS);
     final jsPromise = web.window.navigator.mediaDevices!.getUserMedia(
       constraints,
@@ -336,7 +337,7 @@ class _EmotionDetectionPageState extends State<EmotionDetectionPage> {
     setState(() {
       // Smooth the audio level changes
       _audioLevel = (_audioLevel * 0.7) + (normalizedLevel * 0.3);
-      _audioLevel = _audioLevel;
+      // _audioLevel = _audioLevel;
     });
 
     if (_audioLevel < _silenceThreshold) {
@@ -344,7 +345,7 @@ class _EmotionDetectionPageState extends State<EmotionDetectionPage> {
 
       if (_silenceDuration >= _silenceDurationLimit) {
         debugPrint('🔇 Silence detected for 3 seconds. Auto-stopping...');
-        stopRecordingAndAnalysis();
+        _stopTransmitting();
       }
     } else {
       // 다시 음성 감지되면 리셋
