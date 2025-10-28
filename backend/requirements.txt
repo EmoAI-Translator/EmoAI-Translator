@@ -31,3 +31,4 @@ SpeechRecognition==3.10.4
 PyAudio>=0.2.14
 openai-whisper>=20250625
 transformers
+librosa

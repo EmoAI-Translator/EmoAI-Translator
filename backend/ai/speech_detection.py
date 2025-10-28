@@ -7,7 +7,7 @@ import speech_recognition as sr
 import tempfile
 import os
 import whisper
-from speech_translation import translate_json_list
+from ai.speech_translation import translate_json_list
 import warnings
 import torch
 import librosa

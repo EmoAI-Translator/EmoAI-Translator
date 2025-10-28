@@ -30,6 +30,10 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+last_source_lang = None
+last_target_lang = None
+
+
 @app.websocket("/ws/speech")
 async def speech_websocket(websocket: WebSocket):
     """
@@ -62,10 +66,10 @@ async def speech_websocket(websocket: WebSocket):
     }
     """
 
+    global last_source_lang, last_target_lang
     await websocket.accept()
     print("WebSocket connected for speech detection.")
 
-    # Initialize speaker alternation state (turn-based)
     speaker_id = 1
 
     try:
@@ -75,74 +79,57 @@ async def speech_websocket(websocket: WebSocket):
 
             if command == "transcribe":
                 audio_b64 = data.get("audio")
-                # target_lang = data.get("target_lang", "ko") ----------------
+                incoming_target_lang = data.get("target_lang")
 
                 try:
-                    # Step 1. Transcribe and detect language from audio
                     result = detect_language_and_transcribe_from_base64(audio_b64)
-                    lang = result["language"] #originalTextLang
+                    source_lang = result["language"]
                     text = result["text"]
                     emotion = result["emotion"]
                     scores = result["scores"]
 
-                    # Step 2. Assign current speaker (turn-based alternation)
                     current_speaker = f"Speaker {speaker_id}"
 
-                    # other_speaker_id = 2 if speaker_id == 1 else 1
-                    # target_lang = speaker_langs.get(other_speaker_id)
+                    if speaker_id == 1:
+                        target_lang = incoming_target_lang or "en"
+                        last_source_lang = source_lang
+                        last_target_lang = target_lang
+                    else:
+                        target_lang = last_source_lang if last_source_lang else "ko"
+                        source_lang = last_target_lang if last_target_lang else "en"
 
-                    # Determine target language based on speaker
-                    target_lang = "en" if speaker_id == 1 else "ko"
-
-                    # Step 3. Translate recognized speech
                     translated = translate_json_list(
                         [
                             {
                                 "timestamp": datetime.utcnow().isoformat(),
-                                "lang": lang,
+                                "lang": source_lang,
                                 "text": text,
                             }
                         ],
                         target_lang=target_lang,
                     )[0]
 
-                    # translate_json_list currently returns {
-                    #   'timestamp': ..., 'original_text': ..., 'translated_text': ...
-                    # }
-                    # Frontend expects translated to contain 'timestamp', 'lang', 'text'.
-                    # Map the translator output to the frontend-expected shape here.
-                    try:
-                        translated_payload = {
-                            "timestamp": translated.get("timestamp"),
-                            "lang": target_lang,
-                            # prefer the key 'text' for frontend; fall back to translated_text or original_text
-                            "text": translated.get("translated_text")
-                            or translated.get("text")
-                            or translated.get("original_text"),
-                        }
-                    except Exception:
-                        translated_payload = {
-                            "timestamp": datetime.utcnow().isoformat(),
-                            "lang": target_lang,
-                            "text": None,
-                        }
+                    translated_payload = {
+                        "timestamp": translated.get("timestamp"),
+                        "lang": target_lang,
+                        "text": translated.get("translated_text")
+                        or translated.get("text")
+                        or translated.get("original_text"),
+                    }
 
-                    # Step 4. Send full JSON response including speaker info
                     await websocket.send_json(
                         {
                             "status": "success",
                             "type": "speech",
                             "speaker": current_speaker,
-                            "original": {"lang": lang, "text": text},
-                            "translated": translated,
+                            "original": {"lang": source_lang, "text": text},
+                            "translated": translated_payload,
                             "emotion": emotion,
                             "emotion_scores": scores,
                         }
                     )
 
-                    # Alternate speaker automatically for next turn
                     speaker_id = 2 if speaker_id == 1 else 1
-
 
                 except Exception as e:
                     await websocket.send_json({"status": "error", "message": str(e)})
@@ -154,15 +141,6 @@ async def speech_websocket(websocket: WebSocket):
 
     except WebSocketDisconnect:
         print("Speech WebSocket disconnected.")
-
-
-
-
-
-
-
-
-
 
 
 @app.post("/save_emotion")
@@ -191,7 +169,6 @@ async def save_emotion(payload: dict = Body(...)):
         return {"status": "error", "message": str(e)}
 
 
-
 @app.get("/")
 def root():
     return {"message": "FastAPI minimal test successful."}
@@ -209,6 +186,7 @@ def get_emotions():
     for e in emotions:
         e["_id"] = str(e["_id"])
     return emotions
+
 
 # websocket endpoint for real-time emotion detection and collection, json responses.
 @app.websocket("/ws/emotion")
