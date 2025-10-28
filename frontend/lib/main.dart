@@ -128,6 +128,8 @@ class _EmotionDetectionPageState extends State<EmotionDetectionPage> {
   List<String> Speaker1 = [];
   List<String> Speaker2 = [];
   bool _initialstate = true;
+  String _currentLanguage1 = 'en';
+  String _currentLanguage2 = 'ko';
 
   // Return Example (Backend → Frontend)
   //   {
@@ -590,8 +592,77 @@ class _EmotionDetectionPageState extends State<EmotionDetectionPage> {
                       // Main content
                       Center(
                         child: Column(
-                          mainAxisAlignment: MainAxisAlignment.center,
+                          // mainAxisAlignment: MainAxisAlignmen  t.center,
                           children: [
+                            Row(
+                              mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                              children: [
+                                ElevatedButton(
+                                  onPressed: () {
+                                    setState(() {
+                                      _currentLanguage1 = 'ko';
+                                    });
+                                  },
+                                  style: ElevatedButton.styleFrom(
+                                    backgroundColor: _currentLanguage1 == 'ko'
+                                        ? Colors.blue
+                                        : Colors.grey,
+                                  ),
+                                  child: Text(
+                                    'Korean',
+                                    style: TextStyle(color: Colors.white),
+                                  ),
+                                ),
+                                ElevatedButton(
+                                  onPressed: () {
+                                    setState(() {
+                                      _currentLanguage1 = 'en';
+                                    });
+                                  },
+                                  style: ElevatedButton.styleFrom(
+                                    backgroundColor: _currentLanguage1 == 'en'
+                                        ? Colors.blue
+                                        : Colors.grey,
+                                  ),
+                                  child: Text(
+                                    'English',
+                                    style: TextStyle(color: Colors.white),
+                                  ),
+                                ),
+                                ElevatedButton(
+                                  onPressed: () {
+                                    setState(() {
+                                      _currentLanguage1 = 'jp';
+                                    });
+                                  },
+                                  style: ElevatedButton.styleFrom(
+                                    backgroundColor: _currentLanguage1 == 'jp'
+                                        ? Colors.blue
+                                        : Colors.grey,
+                                  ),
+                                  child: Text(
+                                    'Japanese',
+                                    style: TextStyle(color: Colors.white),
+                                  ),
+                                ),
+                                ElevatedButton(
+                                  onPressed: () {
+                                    setState(() {
+                                      _currentLanguage1 = 'cn';
+                                    });
+                                  },
+                                  style: ElevatedButton.styleFrom(
+                                    backgroundColor: _currentLanguage1 == 'cn'
+                                        ? Colors.blue
+                                        : Colors.grey,
+                                  ),
+                                  child: Text(
+                                    'Chinese',
+                                    style: TextStyle(color: Colors.white),
+                                  ),
+                                ),
+                              ],
+                            ),
                             // Status indicator
                             Container(
                               padding: const EdgeInsets.symmetric(
