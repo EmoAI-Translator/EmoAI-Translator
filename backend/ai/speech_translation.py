@@ -4,7 +4,7 @@ from datetime import datetime
 # Initialize translator
 translator = Translator()
 
-def translate_json_list(json_list, target_lang="ko"):
+def translate_json_list(json_list, target_lang):
     """
     Translates a list of recognized speech JSON objects into another language.
 

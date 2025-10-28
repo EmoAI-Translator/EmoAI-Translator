@@ -21,7 +21,7 @@ class TTS {
   final FlutterTts _tts = FlutterTts();
 
   Future<void> initializeTTS() async {
-    await _tts.setLanguage('ko-KR'); // 한국어
+    await _tts.setLanguage('ko-KR'); // Korean
     await _tts.setSpeechRate(0.5); // 0.0 ~ 1.0
     await _tts.setVolume(1.0); // 0.0 ~ 1.0
     await _tts.setPitch(1.0); // 0.5 ~ 2.0
