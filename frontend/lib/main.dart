@@ -513,7 +513,8 @@ class _EmotionDetectionPageState extends State<EmotionDetectionPage> {
       jsonEncode({
         'command': 'transcribe', // 서버와 약속된 오디오 처리 명령어
         'audio': finalformWav,
-        "target_lang": _currentLanguage2,
+        "target_lang1": _currentLanguage1,
+        "target_lang2": _currentLanguage2,
       }),
     );
     setState(() {
