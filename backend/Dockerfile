@@ -3,12 +3,18 @@ FROM python:3.11-slim
 
 WORKDIR /app
 
+RUN apt-get update && apt-get install -y \
+    gcc \
+    portaudio19-dev \
+    ffmpeg \
+    && rm -rf /var/lib/apt/lists/*
+
 # Install dependencies
 COPY backend/requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 # Copy source
-COPY backend/app ./app
+COPY backend app
 
 # Expose FastAPI port
 EXPOSE 8000
