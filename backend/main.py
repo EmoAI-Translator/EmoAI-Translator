@@ -111,7 +111,7 @@ async def speech_websocket(websocket: WebSocket):
 
             if command == "transcribe":
                 audio_b64 = data.get("audio")
-                incoming_target_lang = data.get("target_lang")
+                incoming_target_lang = data.get("target_lang1")
 
                 try:
                     result = detect_language_and_transcribe_from_base64(audio_b64)
@@ -123,12 +123,12 @@ async def speech_websocket(websocket: WebSocket):
                     current_speaker = f"Speaker {speaker_id}"
 
                     if speaker_id == 1:
-                        target_lang = incoming_target_lang or "en"
+                        target_lang = incoming_target_lang
                         last_source_lang = source_lang
                         last_target_lang = target_lang
                     else:
-                        target_lang = last_source_lang if last_source_lang else "ko"
-                        source_lang = last_target_lang if last_target_lang else "en"
+                        target_lang = last_source_lang
+                        source_lang = last_target_lang
 
                     translated = translate_json_list(
                         [
