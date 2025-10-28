@@ -441,6 +441,7 @@ class _EmotionDetectionPageState extends State<EmotionDetectionPage> {
           emotion = data['emotion'] ?? '';
           emotion_scores = data['emotion_scores'] ?? {};
 
+          // Play TTS audio if available
           final audioB64 = translated['audio_b64'];
           if (audioB64 != null) {
             playAudioBase64(audioB64);

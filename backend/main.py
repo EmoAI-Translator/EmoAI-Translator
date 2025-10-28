@@ -1,6 +1,6 @@
 import base64
 import tempfile
-import cv2
+# import cv2
 import numpy as np
 import asyncio
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Request
@@ -20,7 +20,10 @@ from ai.emotion_detection import (
     get_average_emotion,
 )
 from ai.speech_detection import detect_language_and_transcribe_from_base64
-from TTS.api import TTS
+from gtts import gTTS
+import base64
+import tempfile
+import os
 
 app = FastAPI()
 
@@ -35,36 +38,28 @@ app.add_middleware(
 last_source_lang = None
 last_target_lang = None
 
-# 언어별 TTS 모델 사전
-TTS_MODELS = {
-    # "ko": "tts_models/ko/kss/glow-tts",
-    "en": "tts_models/en/ljspeech/tacotron2-DDC",
-    # "zh": "tts_models/zh-CN/baker/tacotron2-DDC-GST",
-    "ja": "tts_models/ja/kokoro/tacotron2-DDC"
-    # "es": "tts_models/es/mai/tacotron2-DDC",
+# 언어 코드 매핑 (ISO-639-1 기준)
+LANG_MAP = {
+    "ko": "ko",  # 한국어
+    "en": "en",  # 영어
+    "ja": "ja",  # 일본어
+    "zh": "zh-CN",  # 중국어
+    "es": "es",  # 스페인어
 }
-
-# 서버 시작 시 미리 모델 로드
-tts_instances = {lang: TTS(model_name) for lang, model_name in TTS_MODELS.items()}
-# tts_instances = TTS("tts_models/ko/kss/tacotron2-DDC")
-
-
 
 def generate_tts(text, lang="en"):
     """
-        주어진 텍스트와 언어에 맞는 TTS 모델로 음성 생성 후 base64 반환
+    주어진 텍스트와 언어에 맞는 Google TTS 음성을 base64로 반환
     """
-    tts = tts_instances.get(lang, tts_instances["en"])  # 언어 없으면 영어 사용
-    with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as f:
-        wav_path = f.name
+    lang_code = LANG_MAP.get(lang, "en")  # 지원하지 않는 언어면 영어로 fallback
+    with tempfile.NamedTemporaryFile(suffix=".mp3", delete=False) as f:
+        tts = gTTS(text=text, lang=lang_code)
+        tts.save(f.name)
+        f.seek(0)
+        audio_bytes = f.read()
 
-    tts.tts_to_file(text=text, file_path=wav_path)
-
-    with open(wav_path, "rb") as audio_file:
-        audio_bytes = audio_file.read()
-        audio_b64 = base64.b64encode(audio_bytes).decode("utf-8")
-
-    os.remove(wav_path)
+    audio_b64 = base64.b64encode(audio_bytes).decode("utf-8")
+    os.remove(f.name)
     return audio_b64
 
 
@@ -224,89 +219,89 @@ def get_emotions():
 
 
 # websocket endpoint for real-time emotion detection and collection, json responses.
-@app.websocket("/ws/emotion")
-async def emotion_websocket(websocket: WebSocket):
-    await websocket.accept()
-    print("WebSocket connected for emotion detection.")
+# @app.websocket("/ws/emotion")
+# async def emotion_websocket(websocket: WebSocket):
+#     await websocket.accept()
+#     print("WebSocket connected for emotion detection.")
 
-    global collecting
+#     global collecting
 
-    try:
-        while True:
-            data = await websocket.receive_json()
-            command = data.get("command")
+#     try:
+#         while True:
+#             data = await websocket.receive_json()
+#             command = data.get("command")
 
-            if command == "detect":
-                try:
-                    image_b64 = data.get("frame")
-                    image_data = base64.b64decode(image_b64)
-                    np_arr = np.frombuffer(image_data, np.uint8)
-                    frame = cv2.imdecode(np_arr, cv2.IMREAD_COLOR)
+#             if command == "detect":
+#                 try:
+#                     image_b64 = data.get("frame")
+#                     image_data = base64.b64decode(image_b64)
+#                     np_arr = np.frombuffer(image_data, np.uint8)
+#                     frame = cv2.imdecode(np_arr, cv2.IMREAD_COLOR)
 
-                    emotion = detect_emotion(frame)
+#                     emotion = detect_emotion(frame)
 
-                    if collecting:
-                        emotion_buffer.append(emotion)
+#                     if collecting:
+#                         emotion_buffer.append(emotion)
 
-                    await websocket.send_json(
-                        {
-                            "status": "success",
-                            "type": "realtime",
-                            "emotion": emotion,
-                            "collecting": collecting,
-                        }
-                    )
-                except Exception as e:
-                    await websocket.send_json({"status": "error", "message": str(e)})
+#                     await websocket.send_json(
+#                         {
+#                             "status": "success",
+#                             "type": "realtime",
+#                             "emotion": emotion,
+#                             "collecting": collecting,
+#                         }
+#                     )
+#                 except Exception as e:
+#                     await websocket.send_json({"status": "error", "message": str(e)})
 
-            elif command == "start_collect":
-                if collecting:
-                    await websocket.send_json(
-                        {"status": "error", "message": "Already collecting emotions."}
-                    )
-                    continue
+#             elif command == "start_collect":
+#                 if collecting:
+#                     await websocket.send_json(
+#                         {"status": "error", "message": "Already collecting emotions."}
+#                     )
+#                     continue
 
-                duration = data.get("duration", 5)
-                emotion_buffer.clear()
-                collecting = True
+#                 duration = data.get("duration", 5)
+#                 emotion_buffer.clear()
+#                 collecting = True
 
-                await websocket.send_json(
-                    {"status": "started", "type": "collection", "duration": duration}
-                )
+#                 await websocket.send_json(
+#                     {"status": "started", "type": "collection", "duration": duration}
+#                 )
 
-                async def stop_and_return():
-                    await asyncio.sleep(duration)
-                    global collecting
-                    collecting = False
-                    result = get_average_emotion()
+#                 async def stop_and_return():
+#                     await asyncio.sleep(duration)
+#                     global collecting
+#                     collecting = False
+#                     result = get_average_emotion()
 
-                    # Save summary to MongoDB
-                    try:
-                        summary_doc = {
-                            "status": "success",
-                            "type": "summary",
-                            "dominant_emotion": result.get("dominant_emotion"),
-                            "emotion_distribution": result.get("emotion_distribution"),
-                            "sample_count": result.get("sample_count"),
-                            "timestamp": datetime.utcnow().isoformat(),
-                        }
+#                     # Save summary to MongoDB
+#                     try:
+#                         summary_doc = {
+#                             "status": "success",
+#                             "type": "summary",
+#                             "dominant_emotion": result.get("dominant_emotion"),
+#                             "emotion_distribution": result.get("emotion_distribution"),
+#                             "sample_count": result.get("sample_count"),
+#                             "timestamp": datetime.utcnow().isoformat(),
+#                         }
 
-                        result_db = emotions_collection.insert_one(summary_doc)
-                        print(f"Summary saved to MongoDB (ID: {result_db.inserted_id})")
+#                         result_db = emotions_collection.insert_one(summary_doc)
+#                         print(f"Summary saved to MongoDB (ID: {result_db.inserted_id})")
 
-                    except Exception as db_error:
-                        print("MongoDB summary insert failed:", db_error)
+#                     except Exception as db_error:
+#                         print("MongoDB summary insert failed:", db_error)
 
-                    await websocket.send_json(
-                        {"status": "success", "type": "summary", "data": result}
-                    )
+#                     await websocket.send_json(
+#                         {"status": "success", "type": "summary", "data": result}
+#                     )
 
-                asyncio.create_task(stop_and_return())
+#                 asyncio.create_task(stop_and_return())
 
-            else:
-                await websocket.send_json(
-                    {"status": "error", "message": "Unknown command."}
-                )
+#             else:
+#                 await websocket.send_json(
+#                     {"status": "error", "message": "Unknown command."}
+#                 )
 
-    except WebSocketDisconnect:
-        print("WebSocket disconnected.")
+#     except WebSocketDisconnect:
+#         print("WebSocket disconnected.")
