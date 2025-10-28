@@ -37,20 +37,22 @@ last_target_lang = None
 
 # 언어별 TTS 모델 사전
 TTS_MODELS = {
-    "ko": "tts_models/ko/kss/tacotron2-DDC",
+    # "ko": "tts_models/ko/kss/glow-tts",
     "en": "tts_models/en/ljspeech/tacotron2-DDC",
-    "zh": "tts_models/zh-CN/baker/tacotron2-DDC",
-    "ja": "tts_models/ja/kokoro/tacotron2-DDC",
-    "es": "tts_models/es/mai/tacotron2-DDC",
+    # "zh": "tts_models/zh-CN/baker/tacotron2-DDC-GST",
+    "ja": "tts_models/ja/kokoro/tacotron2-DDC"
+    # "es": "tts_models/es/mai/tacotron2-DDC",
 }
 
 # 서버 시작 시 미리 모델 로드
 tts_instances = {lang: TTS(model_name) for lang, model_name in TTS_MODELS.items()}
+# tts_instances = TTS("tts_models/ko/kss/tacotron2-DDC")
+
 
 
 def generate_tts(text, lang="en"):
     """
-    주어진 텍스트와 언어에 맞는 TTS 모델로 음성 생성 후 base64 반환
+        주어진 텍스트와 언어에 맞는 TTS 모델로 음성 생성 후 base64 반환
     """
     tts = tts_instances.get(lang, tts_instances["en"])  # 언어 없으면 영어 사용
     with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as f:
