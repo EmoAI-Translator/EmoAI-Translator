@@ -450,6 +450,9 @@ class _EmotionDetectionPageState extends State<EmotionDetectionPage> {
             Speaker1.add(
               "${translated['timestamp'] ?? ''}: ${translated['text'] ?? ''}",
             );
+            setState(() {
+              _currentLanguage1 = translated['lang'] ?? 'ko';
+            });
           } else {
             Speaker2.add(
               "${translated['timestamp'] ?? ''}: ${translated['text'] ?? ''}",
