@@ -1,7 +1,10 @@
 import 'dart:js_interop';
 import 'package:flutter/material.dart';
 import 'dart:async';
+import 'dart:typed_data';
 import 'dart:convert';
+import 'dart:js' as js;
+import 'dart:js_util' as js_util;
 import 'package:web/web.dart' as web;
 import 'package:web_socket_channel/web_socket_channel.dart';
 import 'dart:typed_data';
@@ -372,6 +375,37 @@ class _EmotionDetectionPageState extends State<EmotionDetectionPage> {
   //     "emotion_scores": scores,
   // }
 
+  void playAudioBase64(String base64Audio) {
+    final audioBytes = base64Decode(base64Audio);
+
+    // Uint8Array 생성
+    final uint8Array = js_util.callConstructor(
+      js_util.getProperty(js_util.globalThis, 'Uint8Array') as Object,
+      [audioBytes],
+    );
+
+    // Blob 생성
+    final blob = js_util.callConstructor(
+      js_util.getProperty(js_util.globalThis, 'Blob') as Object,
+      [
+        js_util.jsify([uint8Array]),
+        js_util.jsify({'type': 'audio/wav'}),
+      ],
+    );
+
+    // Object URL 생성
+    final url = js_util.callMethod(
+      js_util.getProperty(js_util.globalThis, 'URL'),
+      'createObjectURL',
+      [blob],
+    );
+
+    // AudioElement 생성 후 src 할당
+    final audio = web.AudioElement();
+    audio.src = url as String;
+    audio.play();
+  }
+
   void _handleWebSocketMessage(dynamic message) {
     try {
       final data = jsonDecode(message);
@@ -387,8 +421,10 @@ class _EmotionDetectionPageState extends State<EmotionDetectionPage> {
           emotion = data['emotion'] ?? '';
           emotion_scores = data['emotion_scores'] ?? {};
 
-          tts.setEmotion(emotion);
-          tts.speak(translated['translated_text'] ?? '');
+          final audioB64 = translated['audio_b64'];
+          if (audioB64 != null) {
+            playAudioBase64(audioB64);
+          }
 
           if (speaker == 'Speaker 1') {
             Speaker1.add(

@@ -32,3 +32,4 @@ PyAudio>=0.2.14
 openai-whisper>=20250625
 transformers
 librosa
+TTS

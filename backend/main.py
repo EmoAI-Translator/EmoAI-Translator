@@ -1,4 +1,5 @@
 import base64
+import tempfile
 import cv2
 import numpy as np
 import asyncio
@@ -19,6 +20,7 @@ from ai.emotion_detection import (
     get_average_emotion,
 )
 from ai.speech_detection import detect_language_and_transcribe_from_base64
+from TTS.api import TTS
 
 app = FastAPI()
 
@@ -32,6 +34,36 @@ app.add_middleware(
 
 last_source_lang = None
 last_target_lang = None
+
+# 언어별 TTS 모델 사전
+TTS_MODELS = {
+    "ko": "tts_models/ko/kss/tacotron2-DDC",
+    "en": "tts_models/en/ljspeech/tacotron2-DDC",
+    "zh": "tts_models/zh-CN/baker/tacotron2-DDC",
+    "ja": "tts_models/ja/kokoro/tacotron2-DDC",
+    "es": "tts_models/es/mai/tacotron2-DDC",
+}
+
+# 서버 시작 시 미리 모델 로드
+tts_instances = {lang: TTS(model_name) for lang, model_name in TTS_MODELS.items()}
+
+
+def generate_tts(text, lang="en"):
+    """
+    주어진 텍스트와 언어에 맞는 TTS 모델로 음성 생성 후 base64 반환
+    """
+    tts = tts_instances.get(lang, tts_instances["en"])  # 언어 없으면 영어 사용
+    with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as f:
+        wav_path = f.name
+
+    tts.tts_to_file(text=text, file_path=wav_path)
+
+    with open(wav_path, "rb") as audio_file:
+        audio_bytes = audio_file.read()
+        audio_b64 = base64.b64encode(audio_bytes).decode("utf-8")
+
+    os.remove(wav_path)
+    return audio_b64
 
 
 @app.websocket("/ws/speech")
@@ -112,9 +144,10 @@ async def speech_websocket(websocket: WebSocket):
                     translated_payload = {
                         "timestamp": translated.get("timestamp"),
                         "lang": target_lang,
-                        "text": translated.get("translated_text")
+                        "text": translated.get("text")
                         or translated.get("text")
                         or translated.get("original_text"),
+                        "tts_audio_b64": generate_tts(text, lang=target_lang),
                     }
 
                     await websocket.send_json(
