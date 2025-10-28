@@ -641,11 +641,11 @@ class _EmotionDetectionPageState extends State<EmotionDetectionPage> {
                                 ElevatedButton(
                                   onPressed: () {
                                     setState(() {
-                                      _currentLanguage2 = 'ko';
+                                      _currentLanguage1 = 'ko';
                                     });
                                   },
                                   style: ElevatedButton.styleFrom(
-                                    backgroundColor: _currentLanguage2 == 'ko'
+                                    backgroundColor: _currentLanguage1 == 'ko'
                                         ? Colors.blue
                                         : Colors.grey,
                                   ),
@@ -657,11 +657,11 @@ class _EmotionDetectionPageState extends State<EmotionDetectionPage> {
                                 ElevatedButton(
                                   onPressed: () {
                                     setState(() {
-                                      _currentLanguage2 = 'en';
+                                      _currentLanguage1 = 'en';
                                     });
                                   },
                                   style: ElevatedButton.styleFrom(
-                                    backgroundColor: _currentLanguage2 == 'en'
+                                    backgroundColor: _currentLanguage1 == 'en'
                                         ? Colors.blue
                                         : Colors.grey,
                                   ),
@@ -673,11 +673,11 @@ class _EmotionDetectionPageState extends State<EmotionDetectionPage> {
                                 ElevatedButton(
                                   onPressed: () {
                                     setState(() {
-                                      _currentLanguage2 = 'jp';
+                                      _currentLanguage1 = 'jp';
                                     });
                                   },
                                   style: ElevatedButton.styleFrom(
-                                    backgroundColor: _currentLanguage2 == 'jp'
+                                    backgroundColor: _currentLanguage1 == 'jp'
                                         ? Colors.blue
                                         : Colors.grey,
                                   ),
@@ -689,11 +689,11 @@ class _EmotionDetectionPageState extends State<EmotionDetectionPage> {
                                 ElevatedButton(
                                   onPressed: () {
                                     setState(() {
-                                      _currentLanguage2 = 'cn';
+                                      _currentLanguage1 = 'cn';
                                     });
                                   },
                                   style: ElevatedButton.styleFrom(
-                                    backgroundColor: _currentLanguage2 == 'cn'
+                                    backgroundColor: _currentLanguage1 == 'cn'
                                         ? Colors.blue
                                         : Colors.grey,
                                   ),
