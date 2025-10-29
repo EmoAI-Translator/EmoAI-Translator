@@ -3,8 +3,6 @@ import 'package:flutter/material.dart';
 import 'dart:async';
 import 'dart:typed_data';
 import 'dart:convert';
-import 'dart:js' as js;
-import 'dart:js_util' as js_util;
 import 'package:web/web.dart' as web;
 import 'package:web_socket_channel/web_socket_channel.dart';
 import 'dart:typed_data';
@@ -12,53 +10,8 @@ import 'dart:typed_data';
 import 'dart:js_util' as js_util;
 import 'dart:js' as js;
 
-//for tts
-import 'package:flutter_tts/flutter_tts.dart';
-// import 'audio_process.dart';
-
 void main() {
   runApp(const MyApp());
-}
-
-class TTS {
-  final FlutterTts _tts = FlutterTts();
-
-  Future<void> initializeTTS() async {
-    await _tts.setLanguage('ko-KR'); // Korean
-    await _tts.setSpeechRate(0.5); // 0.0 ~ 1.0
-    await _tts.setVolume(1.0); // 0.0 ~ 1.0
-    await _tts.setPitch(1.0); // 0.5 ~ 2.0
-  }
-
-  Future<void> setLanguage(String languageCode) async {
-    await _tts.setLanguage(languageCode);
-  }
-
-  Future<void> setEmotion(String emotion) async {
-    if (emotion == 'happy') {
-      await _tts.setPitch(1.2);
-    } else if (emotion == 'sad') {
-      await _tts.setPitch(0.8);
-      await _tts.setSpeechRate(0.8);
-    } else if (emotion == 'angry') {
-      await _tts.setPitch(1.5);
-      await _tts.setSpeechRate(1.5);
-    } else {
-      await _tts.setPitch(1.0);
-    }
-  }
-
-  Future<void> speak(String text) async {
-    await _tts.speak(text);
-  }
-
-  Future<void> stop() async {
-    await _tts.stop();
-  }
-
-  Future<void> pause() async {
-    await _tts.pause();
-  }
 }
 
 //supported lanuages, right now, lanuage is hardcoded in surver side
@@ -122,19 +75,16 @@ class _EmotionDetectionPageState extends State<EmotionDetectionPage> {
   bool recorderSet = false;
 
   final List<Float32List> _buffers = [];
-  TTS tts = TTS();
 
   //for frontend
-  List<String> Speaker1 = [];
-  List<String> Speaker2 = [];
+  List<List<String>> _speakerText = [[], []];
   bool _initialstate = true;
-  String _currentLanguage1 = 'en';
-  String _currentLanguage2 = 'ko';
+  List<String> _speakerLanguage = ['ko', 'en'];
 
   //For auto termination
   late Duration _silenceDuration;
   final double _silenceThreshold = 0.1; // 임계값 (0.0~1.0), 필요시 조정
-  final Duration _silenceDurationLimit = const Duration(seconds: 3);
+  final Duration _silenceDurationLimit = const Duration(seconds: 2);
 
   // Return Example (Backend → Frontend)
   //   {
@@ -173,7 +123,6 @@ class _EmotionDetectionPageState extends State<EmotionDetectionPage> {
     _initializeAudioStream().then((_) {
       debugPrint('Audio stream initialized successfully');
     });
-    tts.initializeTTS();
     _silenceDuration = Duration.zero;
   }
 
@@ -469,14 +418,14 @@ class _EmotionDetectionPageState extends State<EmotionDetectionPage> {
           }
 
           if (speaker == 'Speaker 1') {
-            Speaker1.add(
+            _speakerText[0].add(
               "${translated['timestamp'] ?? ''}: ${translated['text'] ?? ''}",
             );
             setState(() {
-              _currentLanguage1 = translated['lang'] ?? 'ko';
+              _speakerLanguage[1] = translated['lang'] ?? 'ko';
             });
           } else {
-            Speaker2.add(
+            _speakerText[1].add(
               "${translated['timestamp'] ?? ''}: ${translated['text'] ?? ''}",
             );
           }
@@ -518,8 +467,8 @@ class _EmotionDetectionPageState extends State<EmotionDetectionPage> {
       jsonEncode({
         'command': 'transcribe', // 서버와 약속된 오디오 처리 명령어
         'audio': finalformWav,
-        "target_lang1": _currentLanguage1,
-        "target_lang2": _currentLanguage2,
+        "target_lang1": _speakerLanguage[0],
+        "target_lang2": _speakerLanguage[1],
       }),
     );
     setState(() {
@@ -613,18 +562,23 @@ class _EmotionDetectionPageState extends State<EmotionDetectionPage> {
     }
     super.dispose();
   }
+  ///////////////////////////////////////////////////////////////////
+  /// UI Area
+  ///////////////////////////////////////////////////////////////////
 
-  @override
-  Widget build(BuildContext context) {
+  Widget _desktopLayout() {
+    final height = MediaQuery.of(context).size.height;
     final buttonSize = 200.0;
 
     // Calculate shadow radius based on audio level
     final baseRadius = 20.0;
     final maxRadius = 100.0;
-    final shadowRadius = baseRadius + (_audioLevel * (maxRadius - baseRadius));
+    final shadowRadius =
+        baseRadius + (_audioLevel * (maxRadius - baseRadius) * 2);
 
     return Scaffold(
-      backgroundColor: Colors.black,
+      // backgroundColor: Colors.black,
+      backgroundColor: Colors.blue[50],
       body: Column(
         children: [
           Expanded(
@@ -640,72 +594,15 @@ class _EmotionDetectionPageState extends State<EmotionDetectionPage> {
                           children: [
                             const SizedBox(height: 8),
                             Row(
-                              mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                              mainAxisAlignment: MainAxisAlignment.center,
                               children: [
-                                ElevatedButton(
-                                  onPressed: () {
-                                    setState(() {
-                                      _currentLanguage1 = 'ko';
-                                    });
-                                  },
-                                  style: ElevatedButton.styleFrom(
-                                    backgroundColor: _currentLanguage1 == 'ko'
-                                        ? Colors.blue
-                                        : Colors.grey,
-                                  ),
-                                  child: Text(
-                                    'Korean',
-                                    style: TextStyle(color: Colors.white),
-                                  ),
-                                ),
-                                ElevatedButton(
-                                  onPressed: () {
-                                    setState(() {
-                                      _currentLanguage1 = 'en';
-                                    });
-                                  },
-                                  style: ElevatedButton.styleFrom(
-                                    backgroundColor: _currentLanguage1 == 'en'
-                                        ? Colors.blue
-                                        : Colors.grey,
-                                  ),
-                                  child: Text(
-                                    'English',
-                                    style: TextStyle(color: Colors.white),
-                                  ),
-                                ),
-                                ElevatedButton(
-                                  onPressed: () {
-                                    setState(() {
-                                      _currentLanguage1 = 'ja';
-                                    });
-                                  },
-                                  style: ElevatedButton.styleFrom(
-                                    backgroundColor: _currentLanguage1 == 'ja'
-                                        ? Colors.blue
-                                        : Colors.grey,
-                                  ),
-                                  child: Text(
-                                    'Japanese',
-                                    style: TextStyle(color: Colors.white),
-                                  ),
-                                ),
-                                ElevatedButton(
-                                  onPressed: () {
-                                    setState(() {
-                                      _currentLanguage1 = 'zh';
-                                    });
-                                  },
-                                  style: ElevatedButton.styleFrom(
-                                    backgroundColor: _currentLanguage1 == 'zh'
-                                        ? Colors.blue
-                                        : Colors.grey,
-                                  ),
-                                  child: Text(
-                                    'Chinese',
-                                    style: TextStyle(color: Colors.white),
-                                  ),
-                                ),
+                                _languageButton('ko', 'Korean'),
+                                const SizedBox(width: 8),
+                                _languageButton('en', 'English'),
+                                const SizedBox(width: 8),
+                                _languageButton('zh', 'Chinese'),
+                                const SizedBox(width: 8),
+                                _languageButton('ja', 'Japanese'),
                               ],
                             ),
                             // Status indicator
@@ -720,7 +617,8 @@ class _EmotionDetectionPageState extends State<EmotionDetectionPage> {
                                       vertical: 8,
                                     ),
                                     decoration: BoxDecoration(
-                                      color: Colors.black54,
+                                      // color: Colors.black54,
+                                      color: Colors.green[100],
                                       borderRadius: BorderRadius.circular(20),
                                     ),
                                     child: Row(
@@ -740,7 +638,9 @@ class _EmotionDetectionPageState extends State<EmotionDetectionPage> {
                                         Text(
                                           _connectionStatus,
                                           style: const TextStyle(
-                                            color: Colors.white,
+                                            // color: Colors.white,
+                                            color: Colors.black,
+
                                             fontSize: 14,
                                           ),
                                         ),
@@ -750,91 +650,71 @@ class _EmotionDetectionPageState extends State<EmotionDetectionPage> {
 
                                   const SizedBox(height: 40),
 
-                                  // // Emotion display
-                                  // Text(
-                                  //   // _currentEmotion,
-                                  //   original['lang'] == null
-                                  //       ? ''
-                                  //       : '[${original['lang']!.toUpperCase()}] ${original['text']!}',
-                                  //   style: const TextStyle(
-                                  //     color: Colors.white,
-                                  //     fontSize: 32,
-                                  //     fontWeight: FontWeight.bold,
-                                  //   ),
-                                  // ),
                                   const SizedBox(height: 60),
-                                  Stack(
-                                    alignment: Alignment.center,
-                                    children: [
-                                      AnimatedContainer(
-                                        duration: const Duration(
-                                          milliseconds: 100,
-                                        ),
-                                        width: buttonSize,
-                                        height: buttonSize,
-                                        decoration: BoxDecoration(
-                                          shape: BoxShape.circle,
-                                          color: _isTransmitting
-                                              ? Colors.red
-                                              : Colors.blue,
-                                          boxShadow: [
-                                            BoxShadow(
-                                              color:
-                                                  (_isTransmitting
-                                                          ? Colors.red
-                                                          : Colors.blue)
-                                                      .withOpacity(0.6),
-                                              blurRadius: shadowRadius,
-                                              spreadRadius: shadowRadius / 2,
-                                            ),
-                                          ],
-                                        ),
-                                      ),
-                                      ElevatedButton(
-                                        onPressed: () {
-                                          if (_isTransmitting) {
-                                            _stopTransmitting();
-                                          } else {
-                                            if (_channel != null) {
-                                              _startTransmitting();
-                                            }
-                                          }
-                                        },
-                                        style: ElevatedButton.styleFrom(
-                                          shape: const CircleBorder(),
-                                          padding: EdgeInsets.all(
-                                            buttonSize / 3,
-                                          ),
-                                          backgroundColor: _isTransmitting
-                                              ? Colors.red
-                                              : Colors.blue,
-                                          shadowColor:
-                                              (_isTransmitting
-                                                      ? Colors.red
-                                                      : Colors.blue)
-                                                  .withOpacity(0.6),
-                                          elevation: shadowRadius / 2,
-                                        ),
-                                        child: Icon(
-                                          _isTransmitting
-                                              ? Icons.stop
-                                              : Icons.mic,
-                                          color: Colors.white,
-                                          size: 80,
-                                        ),
-                                      ),
-                                    ],
-                                  ),
+                                  _micButton(height),
+                                  // Stack(
+                                  //   alignment: Alignment.center,
+                                  //   children: [
+                                  //     AnimatedContainer(
+                                  //       duration: const Duration(
+                                  //         milliseconds: 100,
+                                  //       ),
+                                  //       width: buttonSize,
+                                  //       height: buttonSize,
+                                  //       decoration: BoxDecoration(
+                                  //         shape: BoxShape.circle,
+                                  //         color: _isTransmitting
+                                  //             ? Colors.red
+                                  //             : Colors.blue,
+                                  //         boxShadow: [
+                                  //           BoxShadow(
+                                  //             color:
+                                  //                 (_isTransmitting
+                                  //                         ? Colors.red
+                                  //                         : Colors.blue)
+                                  //                     .withOpacity(0.8),
+                                  //             blurRadius: shadowRadius,
+                                  //             spreadRadius: shadowRadius / 2,
+                                  //           ),
+                                  //         ],
+                                  //       ),
+                                  //     ),
+                                  //     ElevatedButton(
+                                  //       onPressed: () {
+                                  //         if (_isTransmitting) {
+                                  //           _stopTransmitting();
+                                  //         } else {
+                                  //           if (_channel != null) {
+                                  //             _startTransmitting();
+                                  //           }
+                                  //         }
+                                  //       },
+                                  //       style: ElevatedButton.styleFrom(
+                                  //         shape: const CircleBorder(),
+                                  //         padding: EdgeInsets.all(
+                                  //           buttonSize / 3,
+                                  //         ),
+                                  //         backgroundColor: _isTransmitting
+                                  //             ? Colors.red
+                                  //             : Colors.blue,
+                                  //         shadowColor:
+                                  //             (_isTransmitting
+                                  //                     ? Colors.red
+                                  //                     : Colors.blue)
+                                  //                 .withOpacity(0.6),
+                                  //         elevation: shadowRadius / 2,
+                                  //       ),
+                                  //       child: Icon(
+                                  //         _isTransmitting
+                                  //             ? Icons.stop
+                                  //             : Icons.mic,
+                                  //         color: Colors.white,
+                                  //         size: 80,
+                                  //       ),
+                                  //     ),
+                                  //   ],
+                                  // ),
                                   const SizedBox(height: 20),
-                                  Text(
-                                    translated['text'] == null
-                                        ? ''
-                                        : translated['text']!,
-                                    style: const TextStyle(
-                                      color: Colors.white,
-                                      fontSize: 14,
-                                    ),
-                                  ),
                                   const SizedBox(height: 40),
                                 ],
                               ),
@@ -852,8 +732,8 @@ class _EmotionDetectionPageState extends State<EmotionDetectionPage> {
                           child: Container(
                             padding: const EdgeInsets.all(16),
                             decoration: BoxDecoration(
-                              color: Colors.black54,
-                              // color: Colors.white,
+                              // color: Colors.black54,
+                              color: Colors.blue[50],
                               borderRadius: BorderRadius.circular(12),
                             ),
                           ),
@@ -868,73 +748,10 @@ class _EmotionDetectionPageState extends State<EmotionDetectionPage> {
                     padding: const EdgeInsets.all(12),
                     child: Column(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
-
                       children: [
-                        Expanded(
-                          child: Container(
-                            decoration: BoxDecoration(
-                              color: Colors.blue.withOpacity(0.2),
-                              borderRadius: BorderRadius.circular(12),
-                            ),
-                            child: ListView.builder(
-                              padding: const EdgeInsets.all(16),
-                              itemCount: Speaker1.length,
-                              itemBuilder: (context, index) {
-                                final message = Speaker1[index];
-                                return Container(
-                                  margin: const EdgeInsets.symmetric(
-                                    vertical: 6,
-                                  ),
-                                  padding: const EdgeInsets.all(12),
-                                  decoration: BoxDecoration(
-                                    color: Colors.grey[800],
-                                    borderRadius: BorderRadius.circular(12),
-                                  ),
-                                  child: Text(
-                                    message,
-                                    style: const TextStyle(
-                                      color: Colors.white,
-                                      fontSize: 16,
-                                    ),
-                                  ),
-                                );
-                              },
-                            ),
-                          ),
-                        ),
+                        _textArea(0),
                         const SizedBox(height: 16),
-                        Expanded(
-                          child: Container(
-                            decoration: BoxDecoration(
-                              color: Colors.blue.withOpacity(0.2),
-                              borderRadius: BorderRadius.circular(12),
-                            ),
-                            child: ListView.builder(
-                              padding: const EdgeInsets.all(16),
-                              itemCount: Speaker2.length,
-                              itemBuilder: (context, index) {
-                                final message = Speaker2[index];
-                                return Container(
-                                  margin: const EdgeInsets.symmetric(
-                                    vertical: 6,
-                                  ),
-                                  padding: const EdgeInsets.all(12),
-                                  decoration: BoxDecoration(
-                                    color: Colors.grey[800],
-                                    borderRadius: BorderRadius.circular(12),
-                                  ),
-                                  child: Text(
-                                    message,
-                                    style: const TextStyle(
-                                      color: Colors.white,
-                                      fontSize: 16,
-                                    ),
-                                  ),
-                                );
-                              },
-                            ),
-                          ),
-                        ),
+                        _textArea(1),
                       ],
                     ),
                   ),
@@ -950,5 +767,250 @@ class _EmotionDetectionPageState extends State<EmotionDetectionPage> {
         ],
       ),
     );
+  }
+
+  Widget _mobileLayout() {
+    final _height = MediaQuery.of(context).size.height;
+    final _width = MediaQuery.of(context).size.width;
+
+    return Scaffold(
+      backgroundColor: Colors.blue[50],
+      body: Container(
+        padding: const EdgeInsets.all(12),
+        child: Column(
+          children: [
+            _textArea(0),
+            Expanded(
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Stack(
+                      children: [
+                        // Main content
+                        Center(
+                          child: Column(
+                            children: [
+                              const SizedBox(height: 10),
+
+                              Center(
+                                child: SizedBox(
+                                  height: 20,
+                                  child: ListView(
+                                    scrollDirection: Axis.horizontal,
+                                    children: [
+                                      _languageButton('ko', 'Korean'),
+                                      const SizedBox(width: 8),
+                                      _languageButton('en', 'English'),
+                                      const SizedBox(width: 8),
+                                      _languageButton('zh', 'Chinese'),
+                                      const SizedBox(width: 8),
+                                      _languageButton('ja', 'Japanese'),
+                                    ],
+                                  ),
+                                ),
+                              ),
+                              // Status indicator
+                              Expanded(
+                                child: Column(
+                                  mainAxisAlignment:
+                                      MainAxisAlignment.spaceEvenly,
+                                  children: [
+                                    SizedBox(
+                                      height: 10,
+                                      // width: _width * 0.8,
+                                      child: Align(
+                                        alignment: Alignment.centerLeft,
+                                        child: Container(
+                                          width: 4,
+                                          height: 4,
+                                          decoration: BoxDecoration(
+                                            shape: BoxShape.circle,
+                                            color:
+                                                _connectionStatus == 'Connected'
+                                                ? Colors.green
+                                                : Colors.red,
+                                          ),
+                                        ),
+                                      ),
+                                    ),
+
+                                    _micButton(_height),
+
+                                    const SizedBox(height: 10),
+
+                                    // Container(
+                                    //   padding: const EdgeInsets.symmetric(
+                                    //     horizontal: 12,
+                                    //     vertical: 8,
+                                    //   ),
+                                    //   decoration: BoxDecoration(
+                                    //     // color: Colors.black54,
+                                    //     color: Colors.green[100],
+                                    //     borderRadius: BorderRadius.circular(20),
+                                    //   ),
+                                    //   child: Row(
+                                    //     mainAxisSize: MainAxisSize.min,
+                                    //     children: [
+                                    //       Icon(
+                                    //         _connectionStatus == 'Connected'
+                                    //             ? Icons.check_circle
+                                    //             : Icons.error,
+                                    //         color:
+                                    //             _connectionStatus == 'Connected'
+                                    //             ? Colors.green
+                                    //             : Colors.red,
+                                    //         size: 20,
+                                    //       ),
+                                    //       Text(
+                                    //         _connectionStatus,
+                                    //         style: const TextStyle(
+                                    //           // color: Colors.white,
+                                    //           color: Colors.black,
+
+                                    //           fontSize: 14,
+                                    //         ),
+                                    //       ),
+                                    //     ],
+                                    //   ),
+                                    // ),
+                                    // const SizedBox(height: 10),
+                                    // const SizedBox(height: 40),
+                                  ],
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+
+                        // Bottom info panel
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            _textArea(1),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _micButton(double height) {
+    final buttonSize = height * 0.2;
+
+    // Calculate shadow radius based on audio level
+    final baseRadius = buttonSize * 0.1;
+    final maxRadius = buttonSize * 0.5;
+    final shadowRadius =
+        baseRadius + (_audioLevel * (maxRadius - baseRadius) * 2);
+
+    return Stack(
+      alignment: Alignment.center,
+      children: [
+        AnimatedContainer(
+          duration: const Duration(milliseconds: 100),
+          width: buttonSize,
+          height: buttonSize,
+          decoration: BoxDecoration(
+            shape: BoxShape.circle,
+            color: _isTransmitting ? Colors.red : Colors.blue,
+            boxShadow: [
+              BoxShadow(
+                color: (_isTransmitting ? Colors.red : Colors.blue).withOpacity(
+                  0.8,
+                ),
+                blurRadius: shadowRadius,
+                spreadRadius: shadowRadius / 2,
+              ),
+            ],
+          ),
+        ),
+        ElevatedButton(
+          onPressed: () {
+            if (_isTransmitting) {
+              _stopTransmitting();
+            } else {
+              if (_channel != null) {
+                _startTransmitting();
+              }
+            }
+          },
+          style: ElevatedButton.styleFrom(
+            shape: const CircleBorder(),
+            padding: EdgeInsets.all(buttonSize / 3),
+            backgroundColor: _isTransmitting ? Colors.red : Colors.blue,
+            shadowColor: (_isTransmitting ? Colors.red : Colors.blue)
+                .withOpacity(0.6),
+            elevation: shadowRadius / 2,
+          ),
+          child: Icon(
+            _isTransmitting ? Icons.stop : Icons.mic,
+            color: Colors.white,
+            size: 80,
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _languageButton(String languageCode, String label) {
+    return ElevatedButton(
+      onPressed: () {
+        setState(() {
+          _speakerLanguage[0] = languageCode;
+        });
+      },
+      style: ElevatedButton.styleFrom(
+        backgroundColor: _speakerLanguage[0] == languageCode
+            ? Colors.blue
+            : Colors.grey,
+      ),
+      child: Text(label, style: const TextStyle(color: Colors.white)),
+    );
+  }
+
+  Widget _textArea(int speakerNo) {
+    if (!_initialstate) {
+      return Expanded(
+        child: Container(
+          decoration: BoxDecoration(
+            color: Colors.blue.withOpacity(0.2),
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: ListView.builder(
+            padding: const EdgeInsets.all(16),
+            itemCount: _speakerText[speakerNo].length,
+            itemBuilder: (context, index) {
+              final message = _speakerText[speakerNo][index];
+              return Container(
+                margin: const EdgeInsets.symmetric(vertical: 6),
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: Colors.grey[800],
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Text(
+                  message,
+                  style: const TextStyle(color: Colors.white, fontSize: 16),
+                ),
+              );
+            },
+          ),
+        ),
+      );
+    }
+    return SizedBox.shrink();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final _width = MediaQuery.of(context).size.width;
+
+    if (_width < 800) {
+      return _mobileLayout();
+    } else {
+      return _desktopLayout();
+    }
   }
 }
