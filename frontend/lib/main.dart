@@ -936,12 +936,19 @@ class _EmotionDetectionPageState extends State<EmotionDetectionPage> {
     );
   }
 
+  Color _getEmotionColor(String? emotion) {
+    if (emotion == 'hap') return Colors.yellow.withOpacity(0.2);
+    if (emotion == 'sad') return Colors.grey.withOpacity(0.2);
+    if (emotion == 'ang') return Colors.red.withOpacity(0.2);
+    return Colors.blue.withOpacity(0.2);
+  }
+
   Widget _textArea(int speakerNo) {
     // if (!_initialstate) {
     return Expanded(
       child: Container(
         decoration: BoxDecoration(
-          color: Colors.blue.withOpacity(0.2),
+          color: _getEmotionColor(_speakerEmotion[speakerNo]),
           borderRadius: BorderRadius.circular(12),
         ),
         child: ListView.builder(
