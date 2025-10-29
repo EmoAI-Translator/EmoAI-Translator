@@ -936,11 +936,11 @@ class _EmotionDetectionPageState extends State<EmotionDetectionPage> {
     );
   }
 
-  Color _getEmotionColor(String? emotion) {
-    if (emotion == 'hap') return Colors.yellow.withOpacity(0.2);
-    if (emotion == 'sad') return Colors.grey.withOpacity(0.2);
-    if (emotion == 'ang') return Colors.red.withOpacity(0.2);
-    return Colors.blue.withOpacity(0.2);
+  Color _getEmotionColor(String? emotion, double _opacityFactor) {
+    if (emotion == 'hap') return Colors.yellow.withOpacity(_opacityFactor);
+    if (emotion == 'sad') return Colors.grey.withOpacity(_opacityFactor);
+    if (emotion == 'ang') return Colors.red.withOpacity(_opacityFactor);
+    return Colors.blue.withOpacity(_opacityFactor);
   }
 
   Widget _textArea(int speakerNo) {
@@ -948,7 +948,7 @@ class _EmotionDetectionPageState extends State<EmotionDetectionPage> {
     return Expanded(
       child: Container(
         decoration: BoxDecoration(
-          color: _getEmotionColor(_speakerEmotion[speakerNo]),
+          color: _getEmotionColor(_speakerEmotion[speakerNo], 0.3),
           borderRadius: BorderRadius.circular(12),
         ),
         child: ListView.builder(
@@ -960,7 +960,7 @@ class _EmotionDetectionPageState extends State<EmotionDetectionPage> {
               margin: const EdgeInsets.symmetric(vertical: 6),
               padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(
-                color: Colors.grey[800],
+                color: _getEmotionColor(_speakerEmotion[speakerNo], 0.7),
                 borderRadius: BorderRadius.circular(12),
               ),
               child: Text(
