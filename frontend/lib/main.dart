@@ -80,6 +80,7 @@ class _EmotionDetectionPageState extends State<EmotionDetectionPage> {
   List<List<String>> _speakerText = [[], []];
   bool _initialstate = true;
   List<String> _speakerLanguage = ['ko', 'en'];
+  List<String> _speakerEmotion = ['neu', 'neu'];
 
   //For auto termination
   late Duration _silenceDuration;
@@ -418,16 +419,16 @@ class _EmotionDetectionPageState extends State<EmotionDetectionPage> {
           }
 
           if (speaker == 'Speaker 1') {
-            _speakerText[0].add(
-              "${translated['timestamp'] ?? ''}: ${translated['text'] ?? ''}",
-            );
+            _speakerText[0].add("${translated['text'] ?? ''}");
             setState(() {
               _speakerLanguage[1] = translated['lang'] ?? 'ko';
+              _speakerEmotion[0] = emotion;
             });
           } else {
-            _speakerText[1].add(
-              "${translated['timestamp'] ?? ''}: ${translated['text'] ?? ''}",
-            );
+            _speakerText[1].add("${translated['text'] ?? ''}");
+            setState(() {
+              _speakerEmotion[1] = emotion;
+            });
           }
         });
 
@@ -838,41 +839,6 @@ class _EmotionDetectionPageState extends State<EmotionDetectionPage> {
 
                                     const SizedBox(height: 10),
 
-                                    // Container(
-                                    //   padding: const EdgeInsets.symmetric(
-                                    //     horizontal: 12,
-                                    //     vertical: 8,
-                                    //   ),
-                                    //   decoration: BoxDecoration(
-                                    //     // color: Colors.black54,
-                                    //     color: Colors.green[100],
-                                    //     borderRadius: BorderRadius.circular(20),
-                                    //   ),
-                                    //   child: Row(
-                                    //     mainAxisSize: MainAxisSize.min,
-                                    //     children: [
-                                    //       Icon(
-                                    //         _connectionStatus == 'Connected'
-                                    //             ? Icons.check_circle
-                                    //             : Icons.error,
-                                    //         color:
-                                    //             _connectionStatus == 'Connected'
-                                    //             ? Colors.green
-                                    //             : Colors.red,
-                                    //         size: 20,
-                                    //       ),
-                                    //       Text(
-                                    //         _connectionStatus,
-                                    //         style: const TextStyle(
-                                    //           // color: Colors.white,
-                                    //           color: Colors.black,
-
-                                    //           fontSize: 14,
-                                    //         ),
-                                    //       ),
-                                    //     ],
-                                    //   ),
-                                    // ),
                                     // const SizedBox(height: 10),
                                     // const SizedBox(height: 40),
                                   ],
@@ -971,36 +937,36 @@ class _EmotionDetectionPageState extends State<EmotionDetectionPage> {
   }
 
   Widget _textArea(int speakerNo) {
-    if (!_initialstate) {
-      return Expanded(
-        child: Container(
-          decoration: BoxDecoration(
-            color: Colors.blue.withOpacity(0.2),
-            borderRadius: BorderRadius.circular(12),
-          ),
-          child: ListView.builder(
-            padding: const EdgeInsets.all(16),
-            itemCount: _speakerText[speakerNo].length,
-            itemBuilder: (context, index) {
-              final message = _speakerText[speakerNo][index];
-              return Container(
-                margin: const EdgeInsets.symmetric(vertical: 6),
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: Colors.grey[800],
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: Text(
-                  message,
-                  style: const TextStyle(color: Colors.white, fontSize: 16),
-                ),
-              );
-            },
-          ),
+    // if (!_initialstate) {
+    return Expanded(
+      child: Container(
+        decoration: BoxDecoration(
+          color: Colors.blue.withOpacity(0.2),
+          borderRadius: BorderRadius.circular(12),
         ),
-      );
-    }
-    return SizedBox.shrink();
+        child: ListView.builder(
+          padding: const EdgeInsets.all(16),
+          itemCount: _speakerText[speakerNo].length,
+          itemBuilder: (context, index) {
+            final message = _speakerText[speakerNo][index];
+            return Container(
+              margin: const EdgeInsets.symmetric(vertical: 6),
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: Colors.grey[800],
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Text(
+                message,
+                style: const TextStyle(color: Colors.white, fontSize: 16),
+              ),
+            );
+          },
+        ),
+      ),
+    );
+    // }
+    // return SizedBox.shrink();
   }
 
   @override
