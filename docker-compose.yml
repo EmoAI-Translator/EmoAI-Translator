@@ -10,19 +10,5 @@ services:
       - ./backend:/app
     networks:
       - app-network
-
-  frontend:
-    build:
-      context: .
-      dockerfile: frontend/Dockerfile
-    container_name: flutter-frontend
-    ports:
-      - "8080:80"
-    depends_on:
-      - backend
-    networks:
-      - app-network
-
-networks:
-  app-network:
-    driver: bridge
+    env_file:
+      - ./backend/.env

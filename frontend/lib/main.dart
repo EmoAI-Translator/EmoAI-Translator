@@ -1,3 +1,4 @@
+import 'dart:io';
 import 'dart:js_interop';
 import 'package:flutter/material.dart';
 import 'dart:async';
@@ -12,6 +13,21 @@ import 'dart:js' as js;
 
 void main() {
   runApp(const MyApp());
+  // if (Platform.isAndroid)
+  //   ;
+  // else if (Platform.isIOS)
+  //   ;
+  // else if (Platform.isWindows)
+  //   ;
+  // else if (Platform.isLinux)
+  //   ;
+  // else if (Platform.isMacOS)
+  //   ;
+  // else if (Platform.isFuchsia)
+  //   ;
+  // else{
+  //   runApp(const MyApp());
+  // }
 }
 
 //supported lanuages, right now, lanuage is hardcoded in surver side
@@ -57,7 +73,8 @@ class EmotionDetectionPage extends StatefulWidget {
 
 class _EmotionDetectionPageState extends State<EmotionDetectionPage> {
   //connect to backend server
-  static const String wsUrl = 'ws://localhost:8000/ws/speech';
+  // static const String wsUrl = 'ws://localhost:8000/ws/speech';
+  static const String wsUrl = 'ws://172.25.54.59:8000/ws/speech';
   web.MediaStream? _stream;
   Timer? _audioAnalyzerTimer;
   WebSocketChannel? _channel;
