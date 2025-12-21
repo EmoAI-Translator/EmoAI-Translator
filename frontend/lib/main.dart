@@ -12,6 +12,7 @@ import 'dart:js_util' as js_util;
 import 'dart:js' as js;
 
 void main() {
+  debugPrint("hi");
   runApp(const MyApp());
   // if (Platform.isAndroid)
   //   ;
@@ -19,13 +20,15 @@ void main() {
   //   ;
   // else if (Platform.isWindows)
   //   ;
-  // else if (Platform.isLinux)
+  // else if (Platform.isLinux) {
+  //   debugPrint("Identified as Linux");
+  // } else if (Platform.isMacOS)
   //   ;
-  // else if (Platform.isMacOS)
-  //   ;
-  // else if (Platform.isFuchsia)
-  //   ;
-  // else{
+  // // else if (Platform.isFuchsia)
+  // //   ;
+  // else {
+  //   debugPrint("Identified as web");
+
   //   runApp(const MyApp());
   // }
 }
@@ -73,7 +76,10 @@ class EmotionDetectionPage extends StatefulWidget {
 
 class _EmotionDetectionPageState extends State<EmotionDetectionPage> {
   //connect to backend server
+
+  //Use this for simple test
   // static const String wsUrl = 'ws://localhost:8000/ws/speech';
+  //Minjun's Thinkpad Linux IP
   static const String wsUrl = 'ws://172.25.54.59:8000/ws/speech';
   web.MediaStream? _stream;
   Timer? _audioAnalyzerTimer;
@@ -665,73 +671,9 @@ class _EmotionDetectionPageState extends State<EmotionDetectionPage> {
                                       ],
                                     ),
                                   ),
-
                                   const SizedBox(height: 40),
-
                                   const SizedBox(height: 60),
                                   _micButton(height),
-                                  // Stack(
-                                  //   alignment: Alignment.center,
-                                  //   children: [
-                                  //     AnimatedContainer(
-                                  //       duration: const Duration(
-                                  //         milliseconds: 100,
-                                  //       ),
-                                  //       width: buttonSize,
-                                  //       height: buttonSize,
-                                  //       decoration: BoxDecoration(
-                                  //         shape: BoxShape.circle,
-                                  //         color: _isTransmitting
-                                  //             ? Colors.red
-                                  //             : Colors.blue,
-                                  //         boxShadow: [
-                                  //           BoxShadow(
-                                  //             color:
-                                  //                 (_isTransmitting
-                                  //                         ? Colors.red
-                                  //                         : Colors.blue)
-                                  //                     .withOpacity(0.8),
-                                  //             blurRadius: shadowRadius,
-                                  //             spreadRadius: shadowRadius / 2,
-                                  //           ),
-                                  //         ],
-                                  //       ),
-                                  //     ),
-                                  //     ElevatedButton(
-                                  //       onPressed: () {
-                                  //         if (_isTransmitting) {
-                                  //           _stopTransmitting();
-                                  //         } else {
-                                  //           if (_channel != null) {
-                                  //             _startTransmitting();
-                                  //           }
-                                  //         }
-                                  //       },
-                                  //       style: ElevatedButton.styleFrom(
-                                  //         shape: const CircleBorder(),
-                                  //         padding: EdgeInsets.all(
-                                  //           buttonSize / 3,
-                                  //         ),
-                                  //         backgroundColor: _isTransmitting
-                                  //             ? Colors.red
-                                  //             : Colors.blue,
-                                  //         shadowColor:
-                                  //             (_isTransmitting
-                                  //                     ? Colors.red
-                                  //                     : Colors.blue)
-                                  //                 .withOpacity(0.6),
-                                  //         elevation: shadowRadius / 2,
-                                  //       ),
-                                  //       child: Icon(
-                                  //         _isTransmitting
-                                  //             ? Icons.stop
-                                  //             : Icons.mic,
-                                  //         color: Colors.white,
-                                  //         size: 80,
-                                  //       ),
-                                  //     ),
-                                  //   ],
-                                  // ),
                                   const SizedBox(height: 20),
                                   const SizedBox(height: 40),
                                 ],
