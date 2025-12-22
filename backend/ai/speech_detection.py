@@ -18,9 +18,18 @@ warnings.filterwarnings(
 )
 
 # -------------------------------
-# Load Models Once
+# Lazy Models Once
 # -------------------------------
-whisper_model = whisper.load_model("base")
+model = None
+
+
+def get_model():
+    global model
+    if model is None:
+        model = whisper.load_model("base")
+    return model
+
+
 emotion_model_name = "superb/wav2vec2-base-superb-er"
 emotion_extractor = AutoFeatureExtractor.from_pretrained(emotion_model_name)
 emotion_model = AutoModelForAudioClassification.from_pretrained(emotion_model_name)
@@ -54,6 +63,8 @@ def detect_emotion_from_audio(wav_path: str):
 # -------------------------------
 def detect_language_and_transcribe_from_base64(audio_b64: str):
     """Decode base64 WAV, transcribe, detect language."""
+    whisper_model = get_model()
+
     audio_bytes = base64.b64decode(audio_b64)
     with tempfile.NamedTemporaryFile(delete=False, suffix=".wav") as temp_wav:
         temp_wav.write(audio_bytes)

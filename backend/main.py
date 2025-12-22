@@ -8,7 +8,8 @@ from ai.speech_translation import translate_json_list
 
 # from db.connection import db
 from pydantic import BaseModel
-from pymongo import MongoClient
+
+# from pymongo import MongoClient
 from datetime import datetime
 import os
 from bson import ObjectId
