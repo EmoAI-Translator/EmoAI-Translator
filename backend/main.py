@@ -12,12 +12,6 @@ from datetime import datetime
 import os
 from bson import ObjectId
 from fastapi import Body
-from ai.emotion_detection import (
-    detect_emotion,
-    emotion_buffer,
-    collecting,
-    get_average_emotion,
-)
 from ai.speech_detection import detect_language_and_transcribe_from_base64
 from gtts import gTTS
 import base64
