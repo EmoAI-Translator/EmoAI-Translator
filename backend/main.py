@@ -4,19 +4,20 @@ import tempfile
 import asyncio
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Request
 from fastapi.middleware.cors import CORSMiddleware
-from ai.speech_translation import translate_json_list
-from db.connection import db
-from pydantic import BaseModel
-from pymongo import MongoClient
-from datetime import datetime
-import os
-from bson import ObjectId
-from fastapi import Body
-from ai.speech_detection import detect_language_and_transcribe_from_base64
-from gtts import gTTS
-import base64
-import tempfile
-import os
+
+# from ai.speech_translation import translate_json_list
+# from db.connection import db
+# from pydantic import BaseModel
+# from pymongo import MongoClient
+# from datetime import datetime
+# import os
+# from bson import ObjectId
+# from fastapi import Body
+# from ai.speech_detection import detect_language_and_transcribe_from_base64
+# from gtts import gTTS
+# import base64
+# import tempfile
+# import os
 
 app = FastAPI()
 
