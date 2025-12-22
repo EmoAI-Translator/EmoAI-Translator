@@ -4,20 +4,20 @@ import tempfile
 import asyncio
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Request
 from fastapi.middleware.cors import CORSMiddleware
+from ai.speech_translation import translate_json_list
 
-# from ai.speech_translation import translate_json_list
 # from db.connection import db
-# from pydantic import BaseModel
-# from pymongo import MongoClient
-# from datetime import datetime
-# import os
-# from bson import ObjectId
-# from fastapi import Body
-# from ai.speech_detection import detect_language_and_transcribe_from_base64
-# from gtts import gTTS
-# import base64
-# import tempfile
-# import os
+from pydantic import BaseModel
+from pymongo import MongoClient
+from datetime import datetime
+import os
+from bson import ObjectId
+from fastapi import Body
+from ai.speech_detection import detect_language_and_transcribe_from_base64
+from gtts import gTTS
+import base64
+import tempfile
+import os
 
 app = FastAPI()
 
@@ -32,147 +32,141 @@ app.add_middleware(
 last_source_lang = None
 last_target_lang = None
 
-
-@app.get("/health")
-def health():
-    return {"status": "ok"}
-
-
-# # 언어 코드 매핑 (ISO-639-1 기준)
-# LANG_MAP = {
-#     "ko": "ko",  # 한국어
-#     "en": "en",  # 영어
-#     "ja": "ja",  # 일본어
-#     "zh": "zh-CN",  # 중국어
-#     "es": "es",  # 스페인어
-# }
+# 언어 코드 매핑 (ISO-639-1 기준)
+LANG_MAP = {
+    "ko": "ko",  # 한국어
+    "en": "en",  # 영어
+    "ja": "ja",  # 일본어
+    "zh": "zh-CN",  # 중국어
+    "es": "es",  # 스페인어
+}
 
 
-# def generate_tts(text, lang="en"):
-#     """
-#     주어진 텍스트와 언어에 맞는 Google TTS 음성을 base64로 반환
-#     """
-#     lang_code = LANG_MAP.get(lang, "en")  # 지원하지 않는 언어면 영어로 fallback
-#     with tempfile.NamedTemporaryFile(suffix=".mp3", delete=False) as f:
-#         tts = gTTS(text=text, lang=lang_code)
-#         tts.save(f.name)
-#         f.seek(0)
-#         audio_bytes = f.read()
+def generate_tts(text, lang="en"):
+    """
+    주어진 텍스트와 언어에 맞는 Google TTS 음성을 base64로 반환
+    """
+    lang_code = LANG_MAP.get(lang, "en")  # 지원하지 않는 언어면 영어로 fallback
+    with tempfile.NamedTemporaryFile(suffix=".mp3", delete=False) as f:
+        tts = gTTS(text=text, lang=lang_code)
+        tts.save(f.name)
+        f.seek(0)
+        audio_bytes = f.read()
 
-#     audio_b64 = base64.b64encode(audio_bytes).decode("utf-8")
-#     os.remove(f.name)
-#     return audio_b64
+    audio_b64 = base64.b64encode(audio_bytes).decode("utf-8")
+    os.remove(f.name)
+    return audio_b64
 
 
-# @app.websocket("/ws/speech")
-# async def speech_websocket(websocket: WebSocket):
-#     """
-#     WebSocket endpoint for real-time speech recognition and translation.
-#     Alternates speakers automatically based on each speech turn.
+@app.websocket("/ws/speech")
+async def speech_websocket(websocket: WebSocket):
+    """
+    WebSocket endpoint for real-time speech recognition and translation.
+    Alternates speakers automatically based on each speech turn.
 
-#     Input Example (Frontend → Backend)
-#     {
-#         "command": "transcribe",
-#         "audio": "<base64_encoded_audio_string>",
-#         "target_lang": "en"
-#     }
+    Input Example (Frontend → Backend)
+    {
+        "command": "transcribe",
+        "audio": "<base64_encoded_audio_string>",
+        "target_lang": "en"
+    }
 
-#     Return Example (Backend → Frontend)
-#     {
-#         "status": "success",
-#         "type": "speech",
-#         "speaker": "Speaker 1",
-#         "original": {
-#             "lang": "ko",
-#             "text": "안녕하세요"
-#         },
-#         "translated": {
-#             "timestamp": datetime.utcnow().isoformat(),
-#             "lang": lang,
-#             "text": text,
-#             "tts_audio_b64": "<base64_encoded_tts_audio_string>"
-#         },
-#         "emotion": "happy",
-#         "emotion_scores": {"happy": 0.95, "sad": 0.02, ...}
-#     }
-#     """
+    Return Example (Backend → Frontend)
+    {
+        "status": "success",
+        "type": "speech",
+        "speaker": "Speaker 1",
+        "original": {
+            "lang": "ko",
+            "text": "안녕하세요"
+        },
+        "translated": {
+            "timestamp": datetime.utcnow().isoformat(),
+            "lang": lang,
+            "text": text,
+            "tts_audio_b64": "<base64_encoded_tts_audio_string>"
+        },
+        "emotion": "happy",
+        "emotion_scores": {"happy": 0.95, "sad": 0.02, ...}
+    }
+    """
 
-#     global last_source_lang, last_target_lang
-#     await websocket.accept()
-#     print("WebSocket connected for speech detection.")
+    global last_source_lang, last_target_lang
+    await websocket.accept()
+    print("WebSocket connected for speech detection.")
 
-#     speaker_id = 1
+    speaker_id = 1
 
-#     try:
-#         while True:
-#             data = await websocket.receive_json()
-#             command = data.get("command")
+    try:
+        while True:
+            data = await websocket.receive_json()
+            command = data.get("command")
 
-#             if command == "transcribe":
-#                 audio_b64 = data.get("audio")
-#                 incoming_target_lang = data.get("target_lang1")
+            if command == "transcribe":
+                audio_b64 = data.get("audio")
+                incoming_target_lang = data.get("target_lang1")
 
-#                 try:
-#                     result = detect_language_and_transcribe_from_base64(audio_b64)
-#                     source_lang = result["language"]
-#                     text = result["text"]
-#                     emotion = result["emotion"]
-#                     scores = result["scores"]
+                try:
+                    result = detect_language_and_transcribe_from_base64(audio_b64)
+                    source_lang = result["language"]
+                    text = result["text"]
+                    emotion = result["emotion"]
+                    scores = result["scores"]
 
-#                     current_speaker = f"Speaker {speaker_id}"
+                    current_speaker = f"Speaker {speaker_id}"
 
-#                     if speaker_id == 1:
-#                         target_lang = incoming_target_lang
-#                         last_source_lang = source_lang
-#                         last_target_lang = target_lang
-#                     else:
-#                         target_lang = last_source_lang
-#                         source_lang = last_target_lang
+                    if speaker_id == 1:
+                        target_lang = incoming_target_lang
+                        last_source_lang = source_lang
+                        last_target_lang = target_lang
+                    else:
+                        target_lang = last_source_lang
+                        source_lang = last_target_lang
 
-#                     translated = translate_json_list(
-#                         [
-#                             {
-#                                 "timestamp": datetime.utcnow().isoformat(),
-#                                 "lang": source_lang,
-#                                 "text": text,
-#                             }
-#                         ],
-#                         target_lang=target_lang,
-#                     )[0]
+                    translated = translate_json_list(
+                        [
+                            {
+                                "timestamp": datetime.utcnow().isoformat(),
+                                "lang": source_lang,
+                                "text": text,
+                            }
+                        ],
+                        target_lang=target_lang,
+                    )[0]
 
-#                     translated_payload = {
-#                         "timestamp": translated.get("timestamp"),
-#                         "lang": target_lang,
-#                         "text": translated.get("translated_text"),
-#                         "tts_audio_b64": generate_tts(
-#                             translated.get("translated_text"), lang=target_lang
-#                         ),
-#                     }
+                    translated_payload = {
+                        "timestamp": translated.get("timestamp"),
+                        "lang": target_lang,
+                        "text": translated.get("translated_text"),
+                        "tts_audio_b64": generate_tts(
+                            translated.get("translated_text"), lang=target_lang
+                        ),
+                    }
 
-#                     await websocket.send_json(
-#                         {
-#                             "status": "success",
-#                             "type": "speech",
-#                             "speaker": current_speaker,
-#                             "original": {"lang": source_lang, "text": text},
-#                             "translated": translated_payload,
-#                             "emotion": emotion,
-#                             "emotion_scores": scores,
-#                         }
-#                     )
+                    await websocket.send_json(
+                        {
+                            "status": "success",
+                            "type": "speech",
+                            "speaker": current_speaker,
+                            "original": {"lang": source_lang, "text": text},
+                            "translated": translated_payload,
+                            "emotion": emotion,
+                            "emotion_scores": scores,
+                        }
+                    )
 
-#                     speaker_id = 2 if speaker_id == 1 else 1
+                    speaker_id = 2 if speaker_id == 1 else 1
 
-#                 except Exception as e:
-#                     await websocket.send_json({"status": "error", "message": str(e)})
+                except Exception as e:
+                    await websocket.send_json({"status": "error", "message": str(e)})
 
-#             else:
-#                 await websocket.send_json(
-#                     {"status": "error", "message": "Unknown command."}
-#                 )
+            else:
+                await websocket.send_json(
+                    {"status": "error", "message": "Unknown command."}
+                )
 
-#     except WebSocketDisconnect:
-#         print("Speech WebSocket disconnected.")
+    except WebSocketDisconnect:
+        print("Speech WebSocket disconnected.")
 
 
 # @app.post("/save_emotion")
@@ -201,9 +195,9 @@ def health():
 #         return {"status": "error", "message": str(e)}
 
 
-# @app.get("/")
-# def root():
-#     return {"message": "FastAPI minimal test successful."}
+@app.get("/")
+def root():
+    return {"message": "FastAPI minimal test successful."}
 
 
 # # MongoDB Connection
