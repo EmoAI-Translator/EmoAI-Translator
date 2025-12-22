@@ -350,7 +350,7 @@ class _EmotionDetectionPageState extends State<EmotionDetectionPage> {
   //     "emotion_scores": scores,
   // }
 
-  void playAudioBase64(String base64Audio) {
+  void playAudioBase64(String base64Audio, {double speed = 1.3}) {
     try {
       // Base64 → Uint8List 변환
       final audioBytes = base64Decode(base64Audio);
@@ -379,14 +379,13 @@ class _EmotionDetectionPageState extends State<EmotionDetectionPage> {
               )
               as String;
 
-      // AudioElement 생성 및 재생 준비
+      // AudioElement 생성 및 재생
       final audio = web.AudioElement();
       audio.src = url;
+      audio.playbackRate = speed; // ✅ 재생 속도 설정 (1.0 = 기본, 1.5 = 1.5배속)
 
-      // 로드 완료 시 재생
       audio.onCanPlayThrough.listen((_) {
         final playResult = js_util.callMethod(audio, 'play', []);
-        // JS Promise 결과 캐치 (에러 무시 방지)
         js_util.promiseToFuture(playResult).catchError((error) {
           print('Audio playback failed: $error');
         });

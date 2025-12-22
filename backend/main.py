@@ -1,8 +1,6 @@
 import base64
 import tempfile
 
-# import cv2
-import numpy as np
 import asyncio
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Request
 from fastapi.middleware.cors import CORSMiddleware
