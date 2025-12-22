@@ -9,9 +9,9 @@ import os
 import whisper
 from ai.speech_translation import translate_json_list
 import warnings
-import torch
-import librosa
-from transformers import AutoFeatureExtractor, AutoModelForAudioClassification
+
+# import torch
+# import librosa
 
 warnings.filterwarnings(
     "ignore", message="FP16 is not supported on CPU; using FP32 instead"
@@ -30,32 +30,32 @@ def get_model():
     return model
 
 
-emotion_model_name = "superb/wav2vec2-base-superb-er"
-emotion_extractor = AutoFeatureExtractor.from_pretrained(emotion_model_name)
-emotion_model = AutoModelForAudioClassification.from_pretrained(emotion_model_name)
+# emotion_model_name = "superb/wav2vec2-base-superb-er"
+# emotion_extractor = AutoFeatureExtractor.from_pretrained(emotion_model_name)
+# emotion_model = AutoModelForAudioClassification.from_pretrained(emotion_model_name)
 
 
-# -------------------------------
-# Emotion Detection Function
-# -------------------------------
-def detect_emotion_from_audio(wav_path: str):
-    """
-    Returns: {"emotion": str, "scores": dict}
-    """
-    speech, sr = librosa.load(wav_path, sr=16000)
-    inputs = emotion_extractor(speech, sampling_rate=16000, return_tensors="pt")
+# # -------------------------------
+# # Emotion Detection Function
+# # -------------------------------
+# def detect_emotion_from_audio(wav_path: str):
+#     """
+#     Returns: {"emotion": str, "scores": dict}
+#     """
+#     speech, sr = librosa.load(wav_path, sr=16000)
+#     inputs = emotion_extractor(speech, sampling_rate=16000, return_tensors="pt")
 
-    with torch.no_grad():
-        logits = emotion_model(**inputs).logits
-        probs = torch.nn.functional.softmax(logits, dim=-1)[0]
-        pred_id = torch.argmax(probs).item()
+#     with torch.no_grad():
+#         logits = emotion_model(**inputs).logits
+#         probs = torch.nn.functional.softmax(logits, dim=-1)[0]
+#         pred_id = torch.argmax(probs).item()
 
-    label = emotion_model.config.id2label[pred_id]
-    scores = {
-        emotion_model.config.id2label[i]: round(float(probs[i]), 4)
-        for i in range(len(probs))
-    }
-    return {"emotion": label, "scores": scores}
+#     label = emotion_model.config.id2label[pred_id]
+#     scores = {
+#         emotion_model.config.id2label[i]: round(float(probs[i]), 4)
+#         for i in range(len(probs))
+#     }
+#     return {"emotion": label, "scores": scores}
 
 
 # -------------------------------
@@ -72,16 +72,16 @@ def detect_language_and_transcribe_from_base64(audio_b64: str):
 
     try:
         result = whisper_model.transcribe(temp_path)
-        emotion_result = detect_emotion_from_audio(temp_path)
+        # emotion_result = detect_emotion_from_audio(temp_path)
     finally:
         os.remove(temp_path)
 
     language = result.get("language", "unknown")
     text = result.get("text", "").strip()
-    emotion = emotion_result["emotion"]
-    scores = emotion_result["scores"]
+    # emotion = emotion_result["emotion"]
+    # scores = emotion_result["scores"]
 
-    return {"language": language, "text": text, "emotion": emotion, "scores": scores}
+    return {"language": language, "text": text, "emotion": None, "scores": None}
 
 
 # -------------------------------
