@@ -57,7 +57,7 @@ class EmotionDetectionPage extends StatefulWidget {
 
 class _EmotionDetectionPageState extends State<EmotionDetectionPage> {
   //connect to backend server
-  static const String wsUrl = 'ws://localhost:8000/ws/speech';
+  static const String wsUrl = 'wss://emoai.us/ws/speech';
   web.MediaStream? _stream;
   Timer? _audioAnalyzerTimer;
   WebSocketChannel? _channel;
