@@ -124,7 +124,7 @@ async def speech_websocket(websocket: WebSocket):
                         target_lang = last_source_lang
                         source_lang = last_target_lang
 
-                    translated = translate_json_list(
+                    translated = (await translate_json_list(
                         [
                             {
                                 "timestamp": datetime.utcnow().isoformat(),
@@ -133,7 +133,7 @@ async def speech_websocket(websocket: WebSocket):
                             }
                         ],
                         target_lang=target_lang,
-                    )[0]
+                    ))[0]
 
                     translated_payload = {
                         "timestamp": translated.get("timestamp"),

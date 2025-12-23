@@ -5,7 +5,7 @@ from datetime import datetime
 translator = Translator()
 
 
-def translate_json_list(json_list, target_lang):
+async def translate_json_list(json_list, target_lang):
     """
     Translates a list of recognized speech JSON objects into another language.
 
@@ -24,7 +24,7 @@ def translate_json_list(json_list, target_lang):
 
         try:
             # Translate using Google Translate API
-            translated = translator.translate(original_text, dest=target_lang)
+            translated = await translator.translate(original_text, dest=target_lang)
 
             translated_results.append(
                 {
