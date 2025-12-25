@@ -1,40 +1,19 @@
-import 'dart:io';
-import 'dart:js_interop';
-import 'package:flutter/material.dart';
 import 'dart:async';
 import 'dart:typed_data';
 import 'dart:convert';
+import 'package:flutter/material.dart';
 import 'package:web/web.dart' as web;
 import 'package:web_socket_channel/web_socket_channel.dart';
-import 'dart:typed_data';
+import 'package:provider/provider.dart';
 //For audio, record failed to work on web
 import 'dart:js_util' as js_util;
 import 'dart:js' as js;
+import 'audio_control.dart';
 
 void main() {
-  debugPrint("hi");
+  // debugPrint("hi");
   runApp(const MyApp());
-  // if (Platform.isAndroid)
-  //   ;
-  // else if (Platform.isIOS)
-  //   ;
-  // else if (Platform.isWindows)
-  //   ;
-  // else if (Platform.isLinux) {
-  //   debugPrint("Identified as Linux");
-  // } else if (Platform.isMacOS)
-  //   ;
-  // // else if (Platform.isFuchsia)
-  // //   ;
-  // else {
-  //   debugPrint("Identified as web");
-
-  //   runApp(const MyApp());
-  // }
 }
-
-//supported lanuages, right now, lanuage is hardcoded in surver side
-// enum Language { ko, en }
 
 class MyApp extends StatelessWidget {
   const MyApp({super.key});
@@ -62,7 +41,10 @@ class MyApp extends StatelessWidget {
         // tested with just a hot reload.
         colorScheme: ColorScheme.fromSeed(seedColor: Colors.deepPurple),
       ),
-      home: const EmotionDetectionPage(),
+      home: ChangeNotifierProvider<AudioControl>(
+        create: (context) => AudioControl.create(),
+        child: const EmotionDetectionPage(),
+      ),
     );
   }
 }
@@ -75,14 +57,15 @@ class EmotionDetectionPage extends StatefulWidget {
 }
 
 class _EmotionDetectionPageState extends State<EmotionDetectionPage> {
+  late AudioControl audio;
   //connect to backend server
 
   //Use this for simple test
-  // static const String wsUrl = 'ws://localhost:8000/ws/speech';
+  static const String wsUrl = 'ws://localhost:8000/ws/speech';
   //Minjun's Thinkpad Linux IP
-  static const String wsUrl = 'ws://172.25.54.59:8000/ws/speech';
+  // static const String wsUrl = 'ws://172.25.54.59:8000/ws/speech';
+  // static const String wsUrl = 'wss://emo-ai.com/dev';
   web.MediaStream? _stream;
-  Timer? _audioAnalyzerTimer;
   WebSocketChannel? _channel;
 
   // Audio analysis
@@ -92,7 +75,7 @@ class _EmotionDetectionPageState extends State<EmotionDetectionPage> {
   web.ScriptProcessorNode? _scriptProcessor;
 
   final List<Float32List> _audioBuffers = []; //buffer
-  bool _isTransmitting = false;
+  bool _isRecording = false;
   String _connectionStatus = 'Disconnected';
   double _audioLevel = 0.0; // 0.0 ~ 1.0
   bool recorderSet = false;
@@ -101,14 +84,9 @@ class _EmotionDetectionPageState extends State<EmotionDetectionPage> {
 
   //for frontend
   List<List<String>> _speakerText = [[], []];
-  bool _initialstate = true;
+  bool _isInitialstate = true;
   List<String> _speakerLanguage = ['ko', 'en'];
   List<String> _speakerEmotion = ['neu', 'neu'];
-
-  //For auto termination
-  late Duration _silenceDuration;
-  final double _silenceThreshold = 0.1; // 임계값 (0.0~1.0), 필요시 조정
-  final Duration _silenceDurationLimit = const Duration(seconds: 2);
 
   // Return Example (Backend → Frontend)
   //   {
@@ -143,25 +121,46 @@ class _EmotionDetectionPageState extends State<EmotionDetectionPage> {
   @override
   void initState() {
     super.initState();
+    _initializeAudio();
     _connectWebSocket();
-    _initializeAudioStream().then((_) {
-      debugPrint('Audio stream initialized successfully');
+    _initializeAudioStream();
+    debugPrint('Audio stream initialized successfully');
+  }
+
+  void _initializeAudio() {
+    audio = Provider.of<AudioControl>(context, listen: false);
+    try {
+      audio.requestPermission();
+    } catch (e) {
+      debugPrint('❌ Error accessing microphone: $e');
+      return;
+    }
+    audio.speaker1 = 'ko';
+    audio.speaker2 = 'en';
+
+    audio.setOnAudioDataReady((audioJson) {
+      if (_channel != null) {
+        _channel?.sink.add(audioJson);
+      }
     });
-    _silenceDuration = Duration.zero;
+
+    audio.setOnRecordingStateChanged((isRecording) {
+      setState(() {
+        _isRecording = isRecording;
+        if (!isRecording) _isInitialstate = false;
+      });
+    });
   }
 
   Future<void> _initializeAudioStream() async {
     _buffers.clear();
 
-    final constraints = web.MediaStreamConstraints(audio: true.toJS);
-    final jsPromise = web.window.navigator.mediaDevices!.getUserMedia(
-      constraints,
-    );
-    _stream = await js_util.promiseToFuture(jsPromise);
-    debugPrint('🎙️ Microphone access granted');
+    if (_stream == null) {
+      debugPrint("stream null");
+      return;
+    }
 
     _audioContext = web.AudioContext();
-
     _audioSource = _audioContext!.createMediaStreamSource(_stream!);
     _scriptProcessor = _audioContext!.createScriptProcessor(4096, 1, 1);
 
@@ -188,16 +187,6 @@ class _EmotionDetectionPageState extends State<EmotionDetectionPage> {
         }
       }),
     );
-    // final constraints = web.MediaStreamConstraints(audio: true.toJS);
-    try {
-      final jsPromise = web.window.navigator.mediaDevices!.getUserMedia(
-        constraints,
-      );
-      _stream = await js_util.promiseToFuture(jsPromise);
-    } catch (e) {
-      debugPrint('❌ Error accessing microphone: $e');
-      return;
-    }
 
     //For audio analysis
     _analyserNode = _audioContext!.createAnalyser();
@@ -208,122 +197,8 @@ class _EmotionDetectionPageState extends State<EmotionDetectionPage> {
     _audioSource!.connect(_scriptProcessor!);
   }
 
-  Future<void> _startAudioAnalysis() async {
-    _audioBuffers.clear();
-    _audioLevel = 0.0;
-    _silenceDuration = Duration.zero;
-
-    final constraints = web.MediaStreamConstraints(audio: true.toJS);
-    final jsPromise = web.window.navigator.mediaDevices!.getUserMedia(
-      constraints,
-    );
-    _stream = await js_util.promiseToFuture(jsPromise);
-    debugPrint('🎙️ Microphone access granted');
-
-    // 2. AudioContext + MediaStreamSource
-    _audioContext = web.AudioContext();
-    _audioSource = _audioContext!.createMediaStreamSource(_stream!);
-
-    // 3. ScriptProcessorNode (녹음)
-    _scriptProcessor = _audioContext!.createScriptProcessor(4096, 1, 1);
-    js_util.setProperty(
-      _scriptProcessor!,
-      'onaudioprocess',
-      js.allowInterop((event) {
-        try {
-          final inputBuffer = js_util.getProperty(event, 'inputBuffer');
-          final channelData = js_util.callMethod(
-            inputBuffer,
-            'getChannelData',
-            [0],
-          );
-          final length = js_util.getProperty(channelData, 'length') as int;
-          final samples = Float32List(length);
-          for (var i = 0; i < length; i++) {
-            samples[i] = js_util.getProperty(channelData, i) as double;
-          }
-          _audioBuffers.add(samples);
-        } catch (e) {
-          debugPrint('❌ audio process error: $e');
-        }
-      }),
-    );
-
-    _analyserNode = _audioContext!.createAnalyser();
-    _analyserNode!.fftSize = 256; // 예시 값, 분석 해상도
-    _audioSource!.connect(_analyserNode!);
-
-    _audioSource!.connect(_scriptProcessor!);
-    _scriptProcessor!.connect(_audioContext!.destination);
-
-    _audioAnalyzerTimer = Timer.periodic(
-      const Duration(milliseconds: 50),
-      (_) => _analyzeAudioLevel(),
-    );
-  }
-
   Future<Uint8List> stopRecordingAndAnalysis() async {
-    _scriptProcessor?.disconnect();
-    _analyserNode?.disconnect();
-    _audioSource?.disconnect();
-
-    // Stop all tracks in the MediaStream (getTracks() returns a JSArray)
-    if (_stream != null) {
-      final tracks = js_util.callMethod(_stream!, 'getTracks', []);
-      final length = js_util.getProperty(tracks, 'length') as int;
-      for (var i = 0; i < length; i++) {
-        final track = js_util.getProperty(tracks, i);
-        if (track != null) {
-          js_util.callMethod(track, 'stop', []);
-        }
-      }
-    }
-
-    _audioAnalyzerTimer?.cancel();
-    _audioAnalyzerTimer = null;
-    setState(() {
-      _audioLevel = 0.0;
-      _isTransmitting = false;
-    });
-
-    debugPrint('⏹️ Stopped audio analysis');
-    return wavFromBuffers(_audioBuffers);
-  }
-
-  void _analyzeAudioLevel() {
-    if (_analyserNode == null) return;
-
-    final dataArray = Uint8List(_analyserNode!.frequencyBinCount);
-    final jsArray = js_util.jsify(dataArray);
-    _analyserNode!.getByteFrequencyData(jsArray);
-
-    // Calculate average vocaplume
-    double sum = 0;
-    for (var i = 0; i < dataArray.length; i++) {
-      sum += dataArray[i];
-    }
-    final average = sum / dataArray.length;
-
-    // Normalize to 0.0 - 1.0 and apply smoothing
-    final normalizedLevel = (average / 255.0).clamp(0.0, 1.0);
-
-    setState(() {
-      // Smooth the audio level changes
-      _audioLevel = (_audioLevel * 0.7) + (normalizedLevel * 0.3);
-      // _audioLevel = _audioLevel;
-    });
-
-    if (_audioLevel < _silenceThreshold) {
-      _silenceDuration += const Duration(milliseconds: 50);
-
-      if (_silenceDuration >= _silenceDurationLimit) {
-        debugPrint('🔇 Silence detected for 3 seconds. Auto-stopping...');
-        _stopTransmitting();
-      }
-    } else {
-      // 다시 음성 감지되면 리셋
-      _silenceDuration = Duration.zero;
-    }
+    return audio.stopRecording();
   }
 
   void _connectWebSocket() {
@@ -411,11 +286,11 @@ class _EmotionDetectionPageState extends State<EmotionDetectionPage> {
         final playResult = js_util.callMethod(audio, 'play', []);
         // JS Promise 결과 캐치 (에러 무시 방지)
         js_util.promiseToFuture(playResult).catchError((error) {
-          print('Audio playback failed: $error');
+          debugPrint('Audio playback failed: $error');
         });
       });
     } catch (e) {
-      print('❌ Audio playback error: $e');
+      debugPrint('❌ Audio playback error: $e');
     }
   }
 
@@ -467,12 +342,11 @@ class _EmotionDetectionPageState extends State<EmotionDetectionPage> {
   }
 
   Future<void> _startTransmitting() async {
-    if (_isTransmitting || _channel == null) return;
+    if (_isRecording || _channel == null) return;
+    await audio.startRecording();
     setState(() {
-      _isTransmitting = true;
+      _isRecording = true;
     });
-    _startAudioAnalysis();
-
     debugPrint('▶️ Started transmitting');
   }
 
@@ -484,100 +358,30 @@ class _EmotionDetectionPageState extends State<EmotionDetectionPage> {
   // }
 
   Future<void> _stopTransmitting() async {
-    final wav = await stopRecordingAndAnalysis();
-    final finalformWav = base64Encode(wav);
-    debugPrint('Base64 length: ${finalformWav.length}');
-    _channel!.sink.add(
-      jsonEncode({
-        'command': 'transcribe', // 서버와 약속된 오디오 처리 명령어
-        'audio': finalformWav,
-        "target_lang1": _speakerLanguage[0],
-        "target_lang2": _speakerLanguage[1],
-      }),
-    );
-    setState(() {
-      _isTransmitting = false;
-      _initialstate = false;
-    });
-  }
-
-  // Float32List를 PCM16으로 변환
-  Uint8List float32ToPCM16(Float32List samples) {
-    final buffer = Uint8List(samples.length * 2);
-    final byteData = buffer.buffer.asByteData();
-    for (var i = 0; i < samples.length; i++) {
-      var s = samples[i];
-      s = s.clamp(-1.0, 1.0);
-      byteData.setInt16(i * 2, (s * 32767).toInt(), Endian.little);
-    }
-    return buffer;
-  }
-
-  // WAV 인코딩
-  Uint8List encodeWav(
-    Float32List samples, {
-    int sampleRate = 44100,
-    int numChannels = 1,
-  }) {
-    final pcmData = float32ToPCM16(samples);
-    final wav = BytesBuilder();
-
-    // RIFF 헤더
-    wav.add(utf8.encode('RIFF'));
-    wav.add(_intToBytes32(36 + pcmData.length)); // ChunkSize
-    wav.add(utf8.encode('WAVE'));
-
-    // fmt 서브청크
-    wav.add(utf8.encode('fmt '));
-    wav.add(_intToBytes32(16)); // Subchunk1Size
-    wav.add(_intToBytes16(1)); // AudioFormat PCM
-    wav.add(_intToBytes16(numChannels));
-    wav.add(_intToBytes32(sampleRate));
-    wav.add(_intToBytes32(sampleRate * numChannels * 2)); // ByteRate
-    wav.add(_intToBytes16(numChannels * 2)); // BlockAlign
-    wav.add(_intToBytes16(16)); // BitsPerSample
-
-    // data 서브청크
-    wav.add(utf8.encode('data'));
-    wav.add(_intToBytes32(pcmData.length));
-    wav.add(pcmData);
-
-    return wav.toBytes();
-  }
-
-  // int → little-endian bytes 변환
-  Uint8List _intToBytes16(int value) {
-    final bytes = Uint8List(2);
-    final bd = bytes.buffer.asByteData();
-    bd.setInt16(0, value, Endian.little);
-    return bytes;
-  }
-
-  Uint8List _intToBytes32(int value) {
-    final bytes = Uint8List(4);
-    final bd = bytes.buffer.asByteData();
-    bd.setInt32(0, value, Endian.little);
-    return bytes;
-  }
-
-  Uint8List wavFromBuffers(List<Float32List> buffers) {
-    final allSamples = Float32List(
-      buffers.fold<int>(0, (a, b) => a + b.length),
-    );
-    var offset = 0;
-    for (var chunk in buffers) {
-      allSamples.setRange(offset, offset + chunk.length, chunk);
-      offset += chunk.length;
-    }
-    return encodeWav(allSamples);
+    // final wav = await stopRecordingAndAnalysis();
+    await stopRecordingAndAnalysis();
+    // final finalformWav = base64Encode(wav);
+    // debugPrint('Base64 length: ${finalformWav.length}');
+    // _channel!.sink.add(
+    //   jsonEncode({
+    //     'command': 'transcribe', // 서버와 약속된 오디오 처리 명령어
+    //     'audio': finalformWav,
+    //     "target_lang1": _speakerLanguage[0],
+    //     "target_lang2": _speakerLanguage[1],
+    //   }),
+    // );
+    // setState(() {
+    //   _isRecording = false;
+    //   _isInitialstate = false;
+    // });
   }
 
   @override
   void dispose() {
-    _audioAnalyzerTimer?.cancel();
+    // _audioAnalyzerTimer?.cancel();
     _channel?.sink.close();
-    _audioSource?.disconnect();
-    _audioContext?.close();
+    // _audioSource?.disconnect();
+    // _audioContext?.close();
 
     if (_stream != null) {
       for (int i = 0; i < _stream!.getTracks().length; i++) {
@@ -702,7 +506,7 @@ class _EmotionDetectionPageState extends State<EmotionDetectionPage> {
                     ],
                   ),
                 ),
-                if (!_initialstate)
+                if (!_isInitialstate)
                   Container(
                     width: MediaQuery.of(context).size.width * 0.4,
                     padding: const EdgeInsets.all(12),
@@ -719,9 +523,7 @@ class _EmotionDetectionPageState extends State<EmotionDetectionPage> {
             ),
           ),
           Text(
-            _isTransmitting
-                ? 'Tap to stop detection'
-                : 'Tap to start detection',
+            _isRecording ? 'Tap to stop detection' : 'Tap to start detection',
             style: const TextStyle(color: Colors.white70, fontSize: 14),
           ),
         ],
@@ -822,60 +624,64 @@ class _EmotionDetectionPageState extends State<EmotionDetectionPage> {
   }
 
   Widget _micButton(double height) {
-    final buttonSize = height * 0.2;
+    return Consumer<AudioControl>(
+      builder: (context, audioControl, child) {
+        final buttonSize = height * 0.2;
 
-    // Calculate shadow radius based on audio level
-    final baseRadius = buttonSize * 0.1;
-    final maxRadius = buttonSize * 0.5;
-    final shadowRadius =
-        baseRadius + (_audioLevel * (maxRadius - baseRadius) * 2);
+        // Calculate shadow radius based on audio level
+        final baseRadius = buttonSize * 0.1;
+        final maxRadius = buttonSize * 0.5;
+        final shadowRadius =
+            baseRadius +
+            (audioControl.audioLevel * (maxRadius - baseRadius) * 2);
 
-    return Stack(
-      alignment: Alignment.center,
-      children: [
-        AnimatedContainer(
-          duration: const Duration(milliseconds: 100),
-          width: buttonSize,
-          height: buttonSize,
-          decoration: BoxDecoration(
-            shape: BoxShape.circle,
-            color: _isTransmitting ? Colors.red : Colors.blue,
-            boxShadow: [
-              BoxShadow(
-                color: (_isTransmitting ? Colors.red : Colors.blue).withOpacity(
-                  0.8,
-                ),
-                blurRadius: shadowRadius,
-                spreadRadius: shadowRadius / 2,
+        return Stack(
+          alignment: Alignment.center,
+          children: [
+            AnimatedContainer(
+              duration: const Duration(milliseconds: 100),
+              width: buttonSize,
+              height: buttonSize,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: _isRecording ? Colors.red : Colors.blue,
+                boxShadow: [
+                  BoxShadow(
+                    color: (_isRecording ? Colors.red : Colors.blue)
+                        .withOpacity(0.8),
+                    blurRadius: shadowRadius,
+                    spreadRadius: shadowRadius / 2,
+                  ),
+                ],
               ),
-            ],
-          ),
-        ),
-        ElevatedButton(
-          onPressed: () {
-            if (_isTransmitting) {
-              _stopTransmitting();
-            } else {
-              if (_channel != null) {
-                _startTransmitting();
-              }
-            }
-          },
-          style: ElevatedButton.styleFrom(
-            shape: const CircleBorder(),
-            padding: EdgeInsets.all(buttonSize / 3),
-            backgroundColor: _isTransmitting ? Colors.red : Colors.blue,
-            shadowColor: (_isTransmitting ? Colors.red : Colors.blue)
-                .withOpacity(0.6),
-            elevation: shadowRadius / 2,
-          ),
-          child: Icon(
-            _isTransmitting ? Icons.stop : Icons.mic,
-            color: Colors.white,
-            size: 80,
-          ),
-        ),
-      ],
+            ),
+            ElevatedButton(
+              onPressed: () {
+                if (_isRecording) {
+                  _stopTransmitting();
+                } else {
+                  if (_channel != null) {
+                    _startTransmitting();
+                  }
+                }
+              },
+              style: ElevatedButton.styleFrom(
+                shape: const CircleBorder(),
+                padding: EdgeInsets.all(buttonSize / 3),
+                backgroundColor: _isRecording ? Colors.red : Colors.blue,
+                shadowColor: (_isRecording ? Colors.red : Colors.blue)
+                    .withOpacity(0.6),
+                elevation: shadowRadius / 2,
+              ),
+              child: Icon(
+                _isRecording ? Icons.stop : Icons.mic,
+                color: Colors.white,
+                size: 80,
+              ),
+            ),
+          ],
+        );
+      },
     );
   }
 
@@ -903,7 +709,7 @@ class _EmotionDetectionPageState extends State<EmotionDetectionPage> {
   }
 
   Widget _textArea(int speakerNo) {
-    // if (!_initialstate) {
+    // if (!_isInitialstate) {
     return Expanded(
       child: Container(
         decoration: BoxDecoration(
