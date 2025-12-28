@@ -2,12 +2,9 @@ import 'dart:async';
 import 'dart:typed_data';
 import 'dart:convert';
 import 'package:flutter/material.dart';
-import 'package:web/web.dart' as web;
 import 'package:web_socket_channel/web_socket_channel.dart';
 import 'package:provider/provider.dart';
 //For audio, record failed to work on web
-import 'dart:js_util' as js_util;
-import 'dart:js' as js;
 import 'audio_control.dart';
 
 void main() {
@@ -61,18 +58,19 @@ class _EmotionDetectionPageState extends State<EmotionDetectionPage> {
   //connect to backend server
 
   //Use this for simple test
-  static const String wsUrl = 'ws://localhost:8000/ws/speech';
+  // static const String wsUrl = 'ws://localhost:8000/ws/speech';
   //Minjun's Thinkpad Linux IP
+  static const String wsUrl = 'ws://10.18.160.214:8000/ws/speech';
   // static const String wsUrl = 'ws://172.25.54.59:8000/ws/speech';
   // static const String wsUrl = 'wss://emo-ai.com/dev';
-  web.MediaStream? _stream;
+  // web.MediaStream? _stream;
   WebSocketChannel? _channel;
 
-  // Audio analysis
-  web.AudioContext? _audioContext;
-  web.AnalyserNode? _analyserNode;
-  web.MediaStreamAudioSourceNode? _audioSource;
-  web.ScriptProcessorNode? _scriptProcessor;
+  // // Audio analysis
+  // web.AudioContext? _audioContext;
+  // web.AnalyserNode? _analyserNode;
+  // web.MediaStreamAudioSourceNode? _audioSource;
+  // web.ScriptProcessorNode? _scriptProcessor;
 
   final List<Float32List> _audioBuffers = []; //buffer
   bool _isRecording = false;
@@ -123,7 +121,6 @@ class _EmotionDetectionPageState extends State<EmotionDetectionPage> {
     super.initState();
     _initializeAudio();
     _connectWebSocket();
-    _initializeAudioStream();
     debugPrint('Audio stream initialized successfully');
   }
 
@@ -150,51 +147,6 @@ class _EmotionDetectionPageState extends State<EmotionDetectionPage> {
         if (!isRecording) _isInitialstate = false;
       });
     });
-  }
-
-  Future<void> _initializeAudioStream() async {
-    _buffers.clear();
-
-    if (_stream == null) {
-      debugPrint("stream null");
-      return;
-    }
-
-    _audioContext = web.AudioContext();
-    _audioSource = _audioContext!.createMediaStreamSource(_stream!);
-    _scriptProcessor = _audioContext!.createScriptProcessor(4096, 1, 1);
-
-    js_util.setProperty(
-      _scriptProcessor!,
-      'onaudioprocess',
-      js.allowInterop((event) {
-        try {
-          final inputBuffer = js_util.getProperty(event, 'inputBuffer');
-          final channelData = js_util.callMethod(
-            inputBuffer,
-            'getChannelData',
-            [0],
-          );
-          final length = js_util.getProperty(channelData, 'length') as int;
-          final samples = Float32List(length);
-          for (var i = 0; i < length; i++) {
-            final v = js_util.getProperty(channelData, i) as num;
-            samples[i] = v.toDouble();
-          }
-          _audioBuffers.add(samples);
-        } catch (e) {
-          debugPrint('❌ audio process callback error: $e');
-        }
-      }),
-    );
-
-    //For audio analysis
-    _analyserNode = _audioContext!.createAnalyser();
-    _analyserNode!.fftSize = 256;
-    _audioSource!.connect(_analyserNode!);
-
-    // Initialize audio context for volume analysis
-    _audioSource!.connect(_scriptProcessor!);
   }
 
   Future<Uint8List> stopRecordingAndAnalysis() async {
@@ -249,49 +201,7 @@ class _EmotionDetectionPageState extends State<EmotionDetectionPage> {
   // }
 
   void playAudioBase64(String base64Audio) {
-    try {
-      // Base64 → Uint8List 변환
-      final audioBytes = base64Decode(base64Audio);
-
-      // JS Uint8Array 생성
-      final uint8Array = js_util.callConstructor(
-        js_util.getProperty(js_util.globalThis, 'Uint8Array') as Object,
-        [js_util.jsify(audioBytes)],
-      );
-
-      // Blob 생성 (audio/wav MIME type)
-      final blob = js_util.callConstructor(
-        js_util.getProperty(js_util.globalThis, 'Blob') as Object,
-        [
-          js_util.jsify([uint8Array]),
-          js_util.jsify({'type': 'audio/wav'}),
-        ],
-      );
-
-      // Object URL 생성
-      final url =
-          js_util.callMethod(
-                js_util.getProperty(js_util.globalThis, 'URL'),
-                'createObjectURL',
-                [blob],
-              )
-              as String;
-
-      // AudioElement 생성 및 재생 준비
-      final audio = web.AudioElement();
-      audio.src = url;
-
-      // 로드 완료 시 재생
-      audio.onCanPlayThrough.listen((_) {
-        final playResult = js_util.callMethod(audio, 'play', []);
-        // JS Promise 결과 캐치 (에러 무시 방지)
-        js_util.promiseToFuture(playResult).catchError((error) {
-          debugPrint('Audio playback failed: $error');
-        });
-      });
-    } catch (e) {
-      debugPrint('❌ Audio playback error: $e');
-    }
+    // audio.playAudioBase64(base64Audio);
   }
 
   void _handleWebSocketMessage(dynamic message) {
@@ -383,11 +293,11 @@ class _EmotionDetectionPageState extends State<EmotionDetectionPage> {
     // _audioSource?.disconnect();
     // _audioContext?.close();
 
-    if (_stream != null) {
-      for (int i = 0; i < _stream!.getTracks().length; i++) {
-        _stream!.getTracks()[i].stop();
-      }
-    }
+    // if (_stream != null) {
+    //   for (int i = 0; i < _stream!.getTracks().length; i++) {
+    //     _stream!.getTracks()[i].stop();
+    //   }
+    // }
     super.dispose();
   }
   ///////////////////////////////////////////////////////////////////

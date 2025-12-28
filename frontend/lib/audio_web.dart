@@ -7,12 +7,9 @@ import 'dart:js' as js;
 import 'package:web/web.dart' as web;
 import 'dart:convert';
 import 'package:flutter/foundation.dart';
+
 // import 'package:provider/provider.dart';
-
-typedef OnAudioDataReady = void Function(String audioJson);
-typedef OnRecordingStateChanged = void Function(bool isRecording);
-
-class AudioControlWeb extends AudioControl {
+class AudioImpl extends AudioControl {
   // List<String> _speakerLanguage = ['ko', 'en'];
 
   web.MediaStream? _stream;
@@ -190,6 +187,53 @@ class AudioControlWeb extends AudioControl {
     _isRecording = false;
     debugPrint('⏹️ Stopped audio analysis');
     return wavFromBuffers(_audioBuffers);
+  }
+
+  @override
+  void playAudioBase64(String base64Audio) {
+    try {
+      // Base64 → Uint8List 변환
+      final audioBytes = base64Decode(base64Audio);
+
+      // JS Uint8Array 생성
+      final uint8Array = js_util.callConstructor(
+        js_util.getProperty(js_util.globalThis, 'Uint8Array') as Object,
+        [js_util.jsify(audioBytes)],
+      );
+
+      // Blob 생성 (audio/wav MIME type)
+      final blob = js_util.callConstructor(
+        js_util.getProperty(js_util.globalThis, 'Blob') as Object,
+        [
+          js_util.jsify([uint8Array]),
+          js_util.jsify({'type': 'audio/wav'}),
+        ],
+      );
+
+      // Object URL 생성
+      final url =
+          js_util.callMethod(
+                js_util.getProperty(js_util.globalThis, 'URL'),
+                'createObjectURL',
+                [blob],
+              )
+              as String;
+
+      // AudioElement 생성 및 재생 준비
+      final audio = web.AudioElement();
+      audio.src = url;
+
+      // 로드 완료 시 재생
+      audio.onCanPlayThrough.listen((_) {
+        final playResult = js_util.callMethod(audio, 'play', []);
+        // JS Promise 결과 캐치 (에러 무시 방지)
+        js_util.promiseToFuture(playResult).catchError((error) {
+          debugPrint('Audio playback failed: $error');
+        });
+      });
+    } catch (e) {
+      debugPrint('❌ Audio playback error: $e');
+    }
   }
 
   @override

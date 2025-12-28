@@ -2,17 +2,15 @@
 import 'package:flutter/foundation.dart';
 import 'dart:convert';
 import 'dart:typed_data';
-import 'audio_control_web.dart'
-    // if (dart.library.html) 'audio_recorder_web.dart'
-    if (dart.library.io) 'audio_control_mobile.dart';
+
+import 'audio_web.dart' if (dart.library.io) 'audio_mobile.dart';
+
+typedef OnAudioDataReady = void Function(String audioJson);
+typedef OnRecordingStateChanged = void Function(bool isRecording);
 
 class AudioControl extends ChangeNotifier {
   static AudioControl create() {
-    // if (kIsWeb) {
-    return AudioControlWeb();
-    // } else {
-    // return AudioControlMobile();
-    // }
+    return AudioImpl();
   }
 
   List<String> _speakerLanguage = ['ko', 'en'];
@@ -56,6 +54,10 @@ class AudioControl extends ChangeNotifier {
 
   void callOnRecordingStateChanged(bool isRecording) {
     _onRecordingStateChanged?.call(isRecording);
+  }
+
+  void playAudioBase64(String base64Audio) {
+    throw UnsupportedError('Platform not supported');
   }
 
   Uint8List wavFromBuffers(List<Float32List> buffers) {
