@@ -149,10 +149,6 @@ class _EmotionDetectionPageState extends State<EmotionDetectionPage> {
     });
   }
 
-  Future<Uint8List> stopRecordingAndAnalysis() async {
-    return audio.stopRecording();
-  }
-
   void _connectWebSocket() {
     try {
       _channel = WebSocketChannel.connect(Uri.parse(wsUrl));
@@ -199,9 +195,6 @@ class _EmotionDetectionPageState extends State<EmotionDetectionPage> {
   //     "emotion": emotion,
   //     "emotion_scores": scores,
   // }
-  void playAudioBase64(String base64Audio) {
-    // audio.playAudioBase64(base64Audio);
-  }
 
   void _handleWebSocketMessage(dynamic message) {
     try {
@@ -222,7 +215,7 @@ class _EmotionDetectionPageState extends State<EmotionDetectionPage> {
           final audioB64 = translated['tts_audio_b64'];
           if (audioB64 != null) {
             debugPrint('🔊 Playing TTS audio for $speaker');
-            playAudioBase64(audioB64);
+            audio.playAudioBase64(audioB64);
           }
 
           if (speaker == 'Speaker 1') {
@@ -267,22 +260,7 @@ class _EmotionDetectionPageState extends State<EmotionDetectionPage> {
   // }
 
   Future<void> _stopTransmitting() async {
-    // final wav = await stopRecordingAndAnalysis();
-    await stopRecordingAndAnalysis();
-    // final finalformWav = base64Encode(wav);
-    // debugPrint('Base64 length: ${finalformWav.length}');
-    // _channel!.sink.add(
-    //   jsonEncode({
-    //     'command': 'transcribe', // 서버와 약속된 오디오 처리 명령어
-    //     'audio': finalformWav,
-    //     "target_lang1": _speakerLanguage[0],
-    //     "target_lang2": _speakerLanguage[1],
-    //   }),
-    // );
-    // setState(() {
-    //   _isRecording = false;
-    //   _isInitialstate = false;
-    // });
+    await audio.stopRecording();
   }
 
   @override
