@@ -201,7 +201,7 @@ class _EmotionDetectionPageState extends State<EmotionDetectionPage> {
   // }
   void playAudioBase64(String base64Audio) {
     // audio.playAudioBase64(base64Audio);
-
+  }
 
   void _handleWebSocketMessage(dynamic message) {
     try {
