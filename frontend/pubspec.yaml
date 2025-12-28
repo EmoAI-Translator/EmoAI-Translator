@@ -35,18 +35,17 @@ dependencies:
   # Use with the CupertinoIcons class for iOS style icons.
   cupertino_icons: ^1.0.8
 
-
   #to communicate with backend server
   web_socket_channel: ^3.0.1
 
   provider: ^6.1.0
 
-  #for audio record
-  # record: ^5.1.0
   web: ^1.1.1
 
-  #for text to speech
-  flutter_tts: ^4.2.3
+  #for mobile
+  record: ^6.1.2 
+  # 권한 관리
+  permission_handler: ^11.3.0
 
 dev_dependencies:
   flutter_test:
