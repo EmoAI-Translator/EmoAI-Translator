@@ -43,3 +43,9 @@ app.*.map.json
 /android/app/debug
 /android/app/profile
 /android/app/release
+
+.vscode/
+/pubspec.lock
+/linux/flutter/generated_*
+/macos/Flutter/Generated*
+/windows/flutter/generated_*
