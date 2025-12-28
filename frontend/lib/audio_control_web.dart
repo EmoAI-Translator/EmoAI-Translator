@@ -42,6 +42,9 @@ class AudioControlWeb extends AudioControl {
   }
 
   @override
+  double get audioLevel => _audioLevel;
+
+  @override
   Future<bool> requestPermission() async {
     final constraints = web.MediaStreamConstraints(audio: true.toJS);
     final jsPromise = web.window.navigator.mediaDevices!.getUserMedia(
