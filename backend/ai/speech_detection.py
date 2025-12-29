@@ -10,9 +10,6 @@ import whisper
 from ai.speech_translation import translate_json_list
 import warnings
 
-# import torch
-# import librosa
-
 warnings.filterwarnings(
     "ignore", message="FP16 is not supported on CPU; using FP32 instead"
 )
@@ -28,35 +25,6 @@ def get_model():
     if model is None:
         model = whisper.load_model("base")
     return model
-
-
-# emotion_model_name = "superb/wav2vec2-base-superb-er"
-# emotion_extractor = AutoFeatureExtractor.from_pretrained(emotion_model_name)
-# emotion_model = AutoModelForAudioClassification.from_pretrained(emotion_model_name)
-
-
-# # -------------------------------
-# # Emotion Detection Function
-# # -------------------------------
-# def detect_emotion_from_audio(wav_path: str):
-#     """
-#     Returns: {"emotion": str, "scores": dict}
-#     """
-#     speech, sr = librosa.load(wav_path, sr=16000)
-#     inputs = emotion_extractor(speech, sampling_rate=16000, return_tensors="pt")
-
-#     with torch.no_grad():
-#         logits = emotion_model(**inputs).logits
-#         probs = torch.nn.functional.softmax(logits, dim=-1)[0]
-#         pred_id = torch.argmax(probs).item()
-
-#     label = emotion_model.config.id2label[pred_id]
-#     scores = {
-#         emotion_model.config.id2label[i]: round(float(probs[i]), 4)
-#         for i in range(len(probs))
-#     }
-#     return {"emotion": label, "scores": scores}
-
 
 # -------------------------------
 # Whisper Transcription + Language
