@@ -152,7 +152,7 @@ def live_turn_taking_recognition():
 
 
 # -------------------------------
-# Main Entry
+# Main Entry; for debug
 # -------------------------------
 if __name__ == "__main__":
     results = live_turn_taking_recognition()
