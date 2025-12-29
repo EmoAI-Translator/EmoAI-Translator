@@ -15,6 +15,7 @@ PyAudio>=0.2.14         # Audio I/O for SpeechRecognition
 openai-whisper>=20250625  # Whisper STT engine (ai/speech_detection.py)
 transformers            # Audio emotion model loading (ai/tone_emotion_detection.py)
 librosa                 # Audio preprocessing/features (not directly called)
+boto3                   # Official SDK (Library) for using AWS Services
 
 # === New/updated packages ===
 wrapt>=1.15.0           # Python 3.11 compatibility helper
