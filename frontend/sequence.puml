@@ -1,0 +1,30 @@
+@startuml
+actor UI
+
+participant AudioControl
+participant AudioImpl
+participant AudioRecorder
+participant Timer
+
+UI -> AudioControl : startRecording()
+AudioControl -> AudioImpl : startRecording()
+
+AudioImpl -> AudioRecorder : startStream()
+AudioRecorder --> AudioImpl : PCM data stream
+
+loop audio chunks
+  AudioImpl -> AudioImpl : _analyzeAudioLevel()
+end
+
+AudioImpl -> Timer : periodic check
+Timer -> AudioImpl : _checkSilence()
+
+alt silence >= 2s
+  AudioImpl -> AudioImpl : _stopTransmitting()
+  AudioImpl -> AudioImpl : stopRecording()
+  AudioImpl -> AudioRecorder : stop()
+  AudioImpl -> AudioImpl : PCM → WAV
+  AudioImpl -> AudioControl : _onAudioDataReady(audioJson)
+end
+
+@enduml
