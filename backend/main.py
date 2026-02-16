@@ -1,6 +1,5 @@
 import base64
 import tempfile
-
 import asyncio
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -14,9 +13,8 @@ from bson import ObjectId
 from fastapi import Body
 from ai.speech_detection import detect_language_and_transcribe_from_base64
 from gtts import gTTS
-import base64
-import tempfile
 import os
+import subprocess
 
 app = FastAPI()
 
@@ -27,7 +25,7 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
-
+    
 last_source_lang = None
 last_target_lang = None
 
@@ -39,7 +37,6 @@ LANG_MAP = {
     "zh": "zh-CN",  # 중국어
     "es": "es",  # 스페인어
 }
-
 
 def generate_tts(text, lang="en"):
     """
@@ -60,12 +57,21 @@ def generate_tts(text, lang="en"):
 @app.websocket("/ws/speech")
 async def speech_websocket(websocket: WebSocket):
     """
+        Feb 14, 2026, 
+        Switching to OPUS Codec
+
+        Happy Valentine's Day!!
+    """
+    """
     WebSocket endpoint for real-time speech recognition and translation.
     Alternates speakers automatically based on each speech turn.
 
     Input Example (Frontend → Backend)
     {
         "command": "transcribe",
+        "audio_format": "audio/webm;codecs=opus",
+                        "audio/ogg;codecs=opus",
+                        "audio/wav"opus, wav" etc...
         "audio": "<base64_encoded_audio_string>",
         "target_lang": "en"
     }
@@ -102,11 +108,18 @@ async def speech_websocket(websocket: WebSocket):
             command = data.get("command")
 
             if command == "transcribe":
+
                 audio_b64 = data.get("audio")
+                audio_format = data.get("audio_format")
+
+                print(f"[AUDIO] format={audio_format} b64_len={len(audio_b64) if audio_b64 else None}")
+
                 incoming_target_lang = data.get("target_lang1")
 
                 try:
-                    result = detect_language_and_transcribe_from_base64(audio_b64)
+                    wav_b64 = convert_to_wav_base64(audio_b64, audio_format)
+                    print(f"[AUDIO] converted_wav_b64_len={len(wav_b64)}")
+                    result = detect_language_and_transcribe_from_base64(wav_b64)
                     source_lang = result["language"]
                     text = result["text"]
                     emotion = result["emotion"]
@@ -211,6 +224,74 @@ def get_emotions():
     for e in emotions:
         e["_id"] = str(e["_id"])
     return emotions
+
+def _suffix_from_audio_format(audio_format: str | None) -> str:
+    fmt = (audio_format or "").lower()
+    if "webm" in fmt:
+        return ".webm"
+    if "ogg" in fmt:
+        return ".ogg"
+    if "wav" in fmt:
+        return ".wav"
+    if "mp3" in fmt:
+        return ".mp3"
+    if "m4a" in fmt or "mp4" in fmt:
+        return ".m4a"
+    return ".bin"
+
+
+def convert_to_wav_base64(audio_b64: str, audio_format: str | None) -> str:
+    """
+    base64로 받은 오디오(ogg/webm/opus/wav 등)를 ffmpeg로 16kHz mono WAV로 변환한 뒤,
+    변환된 WAV를 다시 base64로 반환.
+    """
+    raw_bytes = base64.b64decode(audio_b64)
+    in_suffix = _suffix_from_audio_format(audio_format)
+
+    in_path = None
+    out_path = None
+    try:
+        with tempfile.NamedTemporaryFile(delete=False, suffix=in_suffix) as fin:
+            fin.write(raw_bytes)
+            fin.flush()
+            in_path = fin.name
+
+        out_path = in_path + ".wav"
+
+        # whisper + emotion 파이프라인에 맞게 16kHz mono로 통일
+        cmd = [
+            "ffmpeg",
+            "-y",
+            "-hide_banner",
+            "-loglevel",
+            "error",
+            "-i",
+            in_path,
+            "-ac",
+            "1",
+            "-ar",
+            "16000",
+            "-f",
+            "wav",
+            out_path,
+        ]
+        subprocess.run(cmd, check=True)
+
+        with open(out_path, "rb") as f:
+            wav_bytes = f.read()
+
+        return base64.b64encode(wav_bytes).decode("utf-8")
+    finally:
+        if in_path:
+            try:
+                os.remove(in_path)
+            except OSError:
+                pass
+        if out_path:
+            try:
+                os.remove(out_path)
+            except OSError:
+                pass
 
 
 # websocket endpoint for real-time emotion detection and collection, json responses.
