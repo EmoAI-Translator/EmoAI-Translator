@@ -25,7 +25,7 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
-    
+
 last_source_lang = None
 last_target_lang = None
 
@@ -37,6 +37,7 @@ LANG_MAP = {
     "zh": "zh-CN",  # 중국어
     "es": "es",  # 스페인어
 }
+
 
 def generate_tts(text, lang="en"):
     """
@@ -57,10 +58,10 @@ def generate_tts(text, lang="en"):
 @app.websocket("/ws/speech")
 async def speech_websocket(websocket: WebSocket):
     """
-        Feb 14, 2026, 
-        Switching to OPUS Codec
+    Feb 14, 2026,
+    Switching to OPUS Codec
 
-        Happy Valentine's Day!!
+    Happy Valentine's Day!!
     """
     """
     WebSocket endpoint for real-time speech recognition and translation.
@@ -112,14 +113,16 @@ async def speech_websocket(websocket: WebSocket):
                 audio_b64 = data.get("audio")
                 audio_format = data.get("audio_format")
 
-                print(f"[AUDIO] format={audio_format} b64_len={len(audio_b64) if audio_b64 else None}")
+                print(
+                    f"[AUDIO] format={audio_format} b64_len={len(audio_b64) if audio_b64 else None}"
+                )
 
                 incoming_target_lang = data.get("target_lang1")
 
                 try:
-                    wav_b64 = convert_to_wav_base64(audio_b64, audio_format)
-                    print(f"[AUDIO] converted_wav_b64_len={len(wav_b64)}")
-                    result = detect_language_and_transcribe_from_base64(wav_b64)
+                    opus_b64 = convert_to_opus_base64(audio_b64, audio_format)
+                    print(f"[AUDIO] converted_opus_b64_len={len(opus_b64)}")
+                    result = detect_language_and_transcribe_from_base64(opus_b64)
                     source_lang = result["language"]
                     text = result["text"]
                     emotion = result["emotion"]
@@ -225,6 +228,7 @@ def get_emotions():
         e["_id"] = str(e["_id"])
     return emotions
 
+
 def _suffix_from_audio_format(audio_format: str | None) -> str:
     fmt = (audio_format or "").lower()
     if "webm" in fmt:
@@ -240,10 +244,10 @@ def _suffix_from_audio_format(audio_format: str | None) -> str:
     return ".bin"
 
 
-def convert_to_wav_base64(audio_b64: str, audio_format: str | None) -> str:
+def convert_to_opus_base64(audio_b64: str, audio_format: str | None) -> str:
     """
-    base64로 받은 오디오(ogg/webm/opus/wav 등)를 ffmpeg로 16kHz mono WAV로 변환한 뒤,
-    변환된 WAV를 다시 base64로 반환.
+    base64로 받은 오디오(ogg/webm/opus/wav 등)를 ffmpeg로 16kHz mono OPUS로 변환한 뒤,
+    변환된 OPUS를 다시 base64로 반환.
     """
     raw_bytes = base64.b64decode(audio_b64)
     in_suffix = _suffix_from_audio_format(audio_format)
@@ -256,7 +260,7 @@ def convert_to_wav_base64(audio_b64: str, audio_format: str | None) -> str:
             fin.flush()
             in_path = fin.name
 
-        out_path = in_path + ".wav"
+        out_path = in_path + ".opus"
 
         # whisper + emotion 파이프라인에 맞게 16kHz mono로 통일
         cmd = [
@@ -271,16 +275,18 @@ def convert_to_wav_base64(audio_b64: str, audio_format: str | None) -> str:
             "1",
             "-ar",
             "16000",
+            "-c:a",
+            "libopus",
             "-f",
-            "wav",
+            "ogg",
             out_path,
         ]
         subprocess.run(cmd, check=True)
 
         with open(out_path, "rb") as f:
-            wav_bytes = f.read()
+            opus_bytes = f.read()
 
-        return base64.b64encode(wav_bytes).decode("utf-8")
+        return base64.b64encode(opus_bytes).decode("utf-8")
     finally:
         if in_path:
             try:
