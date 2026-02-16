@@ -4,9 +4,7 @@ import asyncio
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Request
 from fastapi.middleware.cors import CORSMiddleware
 from ai.speech_translation import translate_json_list
-from db.connection import db
 from pydantic import BaseModel
-from pymongo import MongoClient
 from datetime import datetime
 import os
 from bson import ObjectId
@@ -15,6 +13,10 @@ from ai.speech_detection import detect_language_and_transcribe_from_base64
 from gtts import gTTS
 import os
 import subprocess
+
+#mongo db (not gonnna use)
+# from db.connection import db
+# from pymongo import MongoClient
 
 app = FastAPI()
 
@@ -151,7 +153,7 @@ async def speech_websocket(websocket: WebSocket):
                         "lang": target_lang,
                         "text": translated.get("translated_text"),
                         "tts_audio_b64": generate_tts(
-                            translated.get("translated_text"), lang=target_lang
+                            translated.get("translated_text"), lang=target_lang if target_lang else "en"
                         ),
                     }
 
@@ -183,28 +185,29 @@ async def speech_websocket(websocket: WebSocket):
 
 @app.post("/save_emotion")
 async def save_emotion(payload: dict = Body(...)):
-    """Receive WebSocket-style JSON and save it to MongoDB"""
-    try:
-        # Add timestamp if not included
-        if "timestamp" not in payload:
-            from datetime import datetime
+#     """Receive WebSocket-style JSON and save it to MongoDB"""
+#     try:
+#         # Add timestamp if not included
+#         if "timestamp" not in payload:
+#             from datetime import datetime
 
-            payload["timestamp"] = datetime.utcnow().isoformat()
+#             payload["timestamp"] = datetime.utcnow().isoformat()
 
-        # Insert JSON as-is
-        result = emotions_collection.insert_one(payload)
+#         # Insert JSON as-is
+#         result = emotions_collection.insert_one(payload)
 
-        print("MongoDB insert result:", result.inserted_id)
-        # Return confirmation
-        return {
-            "status": "success",
-            "inserted_id": str(result.inserted_id),
-            "saved_data": payload,
-        }
+#         print("MongoDB insert result:", result.inserted_id)
+#         # Return confirmation
+#         return {
+#             "status": "success",
+#             "inserted_id": str(result.inserted_id),
+#             "saved_data": payload,
+#         }
 
-    except Exception as e:
-        print("MongoDB insert error:", e)
-        return {"status": "error", "message": str(e)}
+#     except Exception as e:
+#         print("MongoDB insert error:", e)
+#         return {"status": "error", "message": str(e)}
+    return
 
 
 @app.get("/")
@@ -213,17 +216,18 @@ def root():
 
 
 # MongoDB Connection
-client = MongoClient(os.getenv("MONGO_URI"))
-db = client[os.getenv("DB_NAME")]
-emotions_collection = db["emotions"]
+# client = MongoClient(os.getenv("MONGO_URI"))
+# db = client[os.getenv("DB_NAME")]
+# emotions_collection = db["emotions"]
 
 
-@app.get("/emotions")
+# @app.get("/emotions")
 def get_emotions():
-    emotions = list(emotions_collection.find())
-    for e in emotions:
-        e["_id"] = str(e["_id"])
-    return emotions
+    # emotions = list(emotions_collection.find())
+    # for e in emotions:
+    #     e["_id"] = str(e["_id"])
+    # return emotions
+    return
 
 def _suffix_from_audio_format(audio_format: str | None) -> str:
     fmt = (audio_format or "").lower()
