@@ -1,11 +1,10 @@
 import 'dart:async';
-import 'dart:typed_data';
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:web_socket_channel/web_socket_channel.dart';
 import 'package:provider/provider.dart';
-//For audio, record failed to work on web
 import 'audio_control.dart';
+// import 'ip.dart';
 
 void main() {
   // debugPrint("hi");
@@ -55,30 +54,15 @@ class EmotionDetectionPage extends StatefulWidget {
 
 class _EmotionDetectionPageState extends State<EmotionDetectionPage> {
   late AudioControl audio;
-  //connect to backend server
 
-  //Use this for simple test
-  // static const String wsUrl = 'ws://localhost:8000/ws/speech';
-  //Minjun's Thinkpad Linux IP
-  static const String wsUrl = 'ws://10.18.160.214:8000/ws/speech';
-  // static const String wsUrl = 'ws://172.25.54.59:8000/ws/speech';
-  // static const String wsUrl = 'wss://emo-ai.com/dev';
-  // web.MediaStream? _stream;
+  //connect to backend server
+  static String wsUrl = 'ws://localhost:8000/ws/speech';
   WebSocketChannel? _channel;
 
-  // // Audio analysis
-  // web.AudioContext? _audioContext;
-  // web.AnalyserNode? _analyserNode;
-  // web.MediaStreamAudioSourceNode? _audioSource;
-  // web.ScriptProcessorNode? _scriptProcessor;
-
-  final List<Float32List> _audioBuffers = []; //buffer
   bool _isRecording = false;
   String _connectionStatus = 'Disconnected';
   double _audioLevel = 0.0; // 0.0 ~ 1.0
   bool recorderSet = false;
-
-  final List<Float32List> _buffers = [];
 
   //for frontend
   List<List<String>> _speakerText = [[], []];
@@ -135,18 +119,18 @@ class _EmotionDetectionPageState extends State<EmotionDetectionPage> {
     audio.speaker1 = 'ko';
     audio.speaker2 = 'en';
 
-    audio.setOnAudioDataReady((audioJson) {
-      if (_channel != null) {
-        _channel?.sink.add(audioJson);
-      }
-    });
+    //   audio.setOnAudioDataReady((audioJson) {
+    //     if (_channel != null) {
+    //       _channel?.sink.add(audioJson);
+    //     }
+    //   });
 
-    audio.setOnRecordingStateChanged((isRecording) {
-      setState(() {
-        _isRecording = isRecording;
-        if (!isRecording) _isInitialstate = false;
-      });
-    });
+    //   audio.setOnRecordingStateChanged((isRecording) {
+    //     setState(() {
+    //       _isRecording = isRecording;
+    //       if (!isRecording) _isInitialstate = false;
+    //     });
+    //   });
   }
 
   void _connectWebSocket() {
@@ -203,7 +187,7 @@ class _EmotionDetectionPageState extends State<EmotionDetectionPage> {
       final type = data['type'] as String?;
 
       if (status == 'success' && type == 'speech') {
-        debugPrint('✅ Message from backend: $data');
+        // debugPrint('✅ Message from backend: $data');
         setState(() {
           speaker = data['speaker'] ?? 'Speaker 1';
           original = data['original'] ?? {};
@@ -215,7 +199,7 @@ class _EmotionDetectionPageState extends State<EmotionDetectionPage> {
           final audioB64 = translated['tts_audio_b64'];
           if (audioB64 != null) {
             debugPrint('🔊 Playing TTS audio for $speaker');
-            audio.playAudioBase64(audioB64);
+            audio.playVoice(audioB64);
           }
 
           if (speaker == 'Speaker 1') {
@@ -233,23 +217,36 @@ class _EmotionDetectionPageState extends State<EmotionDetectionPage> {
         });
 
         debugPrint(
-          '🗣️ Speaker: $speaker, Original: ${original['text']}, Translated: ${translated['text']}, Emotion: $emotion',
+          'Speaker: $speaker, Original: ${original['text']}, Translated: ${translated['text']}, Emotion: $emotion',
         );
       } else if (status == 'error') {
-        debugPrint('❌ Message from backend error: ${data['message']}');
+        debugPrint('Message from backend error: ${data['message']}');
       }
     } catch (e) {
-      debugPrint('❌ Message parsing error: $e');
+      debugPrint('Message parsing error: $e');
     }
   }
 
-  Future<void> _startTransmitting() async {
+  Future<void> _startRecording() async {
     if (_isRecording || _channel == null) return;
-    await audio.startRecording();
     setState(() {
       _isRecording = true;
     });
-    debugPrint('▶️ Started transmitting');
+    debugPrint('▶️ Started recording');
+
+    try {
+      final String? audioJson = await audio.startRecording();
+      if (audioJson != null && _channel != null) {
+        debugPrint('Sending audio data to backend...');
+        _channel!.sink.add(audioJson);
+      }
+    } catch (e) {
+      debugPrint('Recording error: $e');
+    } finally {
+      // setState(() {
+      //   _isRecording = false;
+      // });
+    }
   }
 
   // Formet to send to backend
@@ -259,22 +256,16 @@ class _EmotionDetectionPageState extends State<EmotionDetectionPage> {
   //     "target_lang": "en"
   // }
 
-  Future<void> _stopTransmitting() async {
+  Future<void> _stopRecording() async {
     await audio.stopRecording();
+    setState(() {
+      _isRecording = false;
+    });
   }
 
   @override
   void dispose() {
-    // _audioAnalyzerTimer?.cancel();
     _channel?.sink.close();
-    // _audioSource?.disconnect();
-    // _audioContext?.close();
-
-    // if (_stream != null) {
-    //   for (int i = 0; i < _stream!.getTracks().length; i++) {
-    //     _stream!.getTracks()[i].stop();
-    //   }
-    // }
     super.dispose();
   }
   ///////////////////////////////////////////////////////////////////
@@ -511,16 +502,15 @@ class _EmotionDetectionPageState extends State<EmotionDetectionPage> {
   }
 
   Widget _micButton(double height) {
-    return Consumer<AudioControl>(
-      builder: (context, audioControl, child) {
-        final buttonSize = height * 0.2;
-
-        // Calculate shadow radius based on audio level
-        final baseRadius = buttonSize * 0.1;
-        final maxRadius = buttonSize * 0.5;
+    final audioControl = Provider.of<AudioControl>(context, listen: false);
+    final buttonSize = height * 0.2;
+    final baseRadius = buttonSize * 0.1;
+    final maxRadius = buttonSize * 0.5;
+    return ValueListenableBuilder<double>(
+      valueListenable: audioControl.audioLevelNotifier,
+      builder: (context, audioLevel, child) {
         final shadowRadius =
-            baseRadius +
-            (audioControl.audioLevel * (maxRadius - baseRadius) * 2);
+            baseRadius + (audioLevel * (maxRadius - baseRadius) * 2);
 
         return Stack(
           alignment: Alignment.center,
@@ -545,10 +535,10 @@ class _EmotionDetectionPageState extends State<EmotionDetectionPage> {
             ElevatedButton(
               onPressed: () {
                 if (_isRecording) {
-                  _stopTransmitting();
+                  _stopRecording();
                 } else {
                   if (_channel != null) {
-                    _startTransmitting();
+                    _startRecording();
                   }
                 }
               },
