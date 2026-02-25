@@ -56,7 +56,7 @@ class _EmotionDetectionPageState extends State<EmotionDetectionPage> {
   late AudioControl audio;
 
   //connect to backend server
-  static String wsUrl = 'ws://localhost:8000/ws/speech';
+  static String wsUrl = 'wss://api.emoai.us/ws/speech';
   WebSocketChannel? _channel;
 
   bool _isRecording = false;
