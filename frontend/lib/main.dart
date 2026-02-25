@@ -58,11 +58,11 @@ class _EmotionDetectionPageState extends State<EmotionDetectionPage> {
   //connect to backend server
 
   //Use this for simple test
-  static const String wsUrl = 'ws://3.142.232.141:8000/ws/speech';
+  //static const String wsUrl = 'ws://3.142.232.141:8000/ws/speech';
   //Minjun's Thinkpad Linux IP
   // static const String wsUrl = 'ws://10.18.160.214:8000/ws/speech';
   // static const String wsUrl = 'ws://172.25.54.59:8000/ws/speech';
-  // static const String wsUrl = 'wss://emo-ai.com/dev';
+  static const String wsUrl = 'wss://api.emoai.us/ws/speech';
   // web.MediaStream? _stream;
   WebSocketChannel? _channel;
 
