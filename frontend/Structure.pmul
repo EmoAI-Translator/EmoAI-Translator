@@ -2,47 +2,9 @@
 skinparam classAttributeIconSize 0
 skinparam linetype ortho
 
-class ChangeNotifier
-
-class AudioControl {
-  - List<String> _speakerLanguage
-  - OnAudioDataReady? _onAudioDataReady
-  - OnRecordingStateChanged? _onRecordingStateChanged
-
-  + static AudioControl create()
-
-  + Future<bool> initializeAudio()
-  + Future<void> startRecording()
-  + Future<Uint8List> stopRecording()
-
-  + double audioLevel
-  + bool isRecording
-
-  + String getSpeaker1
-  + String getSpeaker2
-  + speaker1(lang: String)
-  + speaker2(lang: String)
-
-  + setOnAudioDataReady(callback)
-  + setOnRecordingStateChanged(callback)
-
-  + callOnAudioDataReady(audioJson: String)
-  + callOnRecordingStateChanged(isRecording: bool)
-
-  + playAudioBase64(base64Audio: String)
-
-  + wavFromBuffers(buffers: List<Float32List>): Uint8List
-  + encodeWav(samples: Float32List, sampleRate, numChannels): Uint8List
-  + float32ToPCM16(samples: Float32List): Uint8List
-
-  - _intToBytes16(value: int): Uint8List
-  - _intToBytes32(value: int): Uint8List
-}
-
 class AudioImpl {
   - AudioRecorder _audioRecorder
   - StreamSubscription<List<int>>? _recordSub
-  - List<int> _audioBytesBuffer
 
   - bool _isRecording
   - double _audioLevel
@@ -52,22 +14,40 @@ class AudioImpl {
   - Duration _silenceDurationLimit
   - Timer? _silenceTimer
 
-  - OnAudioDataReady? _onAudioDataReady
-  - OnRecordingStateChanged? _onRecordingStateChanged
-
   + AudioImpl(onAudioDataReady, onRecordingStateChanged)
 
   + double audioLevel
   + Future<bool> initializeAudio()
-  + Future<void> startRecording()
-  + Future<Uint8List> stopRecording()
+  + Future<void> recording()
   + void dispose()
 
   - void _analyzeAudioLevel(data: List<int>)
   - void _checkSilence()
   - Future<void> _stopTransmitting()
-  - Uint8List _pcmToWav(pcmBytes: Uint8List)
-  - void _writeString(data: ByteData, offset: int, value: String)
+}
+
+class ChangeNotifier
+
+class AudioControl {
+  - List<String> _speakerLanguage
+
+  + static AudioControl create()
+
+  + Future<bool> initializeAudio()
+  + Future<void> record()
+
+  + double audioLevel
+  + bool isRecording
+
+  + String getSpeaker1
+  + String getSpeaker2
+  + speaker1(lang: String)
+  + speaker2(lang: String)
+  + playAAC(base64Audio: String)
+
+  + wavFromBuffers(buffers: List<Float32List>): Uint8List
+  + encodeWav(samples: Float32List, sampleRate, numChannels): Uint8List
+  + float32ToPCM16(samples: Float32List): Uint8List
 }
 
 AudioControl --|> ChangeNotifier

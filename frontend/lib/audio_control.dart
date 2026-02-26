@@ -56,11 +56,6 @@ class AudioControl extends ChangeNotifier {
     // final path = await _makeTempPath(extension: ext);
 
     await _recorder.start(
-      // RecordConfig(
-      // encoder: kIsWeb ? AudioEncoder.opus : AudioEncoder.aacLc,
-      // bitRate: 64000,
-      // sampleRate: 48000,
-      // ),
       config,
       path: path ?? '',
     );
