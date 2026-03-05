@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:web_socket_channel/web_socket_channel.dart';
 import 'package:provider/provider.dart';
 import 'audio_control.dart';
+import 'debug_module.dart';
 // import 'ip.dart';
 
 void main() {
@@ -63,6 +64,10 @@ class _EmotionDetectionPageState extends State<EmotionDetectionPage> {
   int _connectionStatus = 1;
   double _audioLevel = 0.0; // 0.0 ~ 1.0
   bool recorderSet = false;
+  bool _showMenuOverlay = false;
+  bool _showDebugPanel = false;
+  String? _lastSentPacket;
+  String? _lastReceivedPacket;
 
   //for frontend
   List<List<String>> _speakerText = [[], []];
@@ -181,10 +186,25 @@ class _EmotionDetectionPageState extends State<EmotionDetectionPage> {
   // }
 
   void _handleWebSocketMessage(dynamic message) {
+    final rawMessage = '$message';
+    setState(() {
+      _lastReceivedPacket = rawMessage;
+    });
+
     try {
-      final data = jsonDecode(message);
-      final status = data['status'] as String?;
-      final type = data['type'] as String?;
+      final decoded = jsonDecode(rawMessage);
+      if (decoded is! Map<String, dynamic>) {
+        debugPrint('Unsupported packet shape: ${decoded.runtimeType}');
+        return;
+      }
+
+      final data = decoded;
+      final status = data['status']?.toString();
+      final type = data['type']?.toString();
+      final hasSpeechPayload =
+          data['translated'] != null ||
+          data['original'] != null ||
+          data['speaker'] != null;
 
       if (status == 'error') {
         debugPrint('Message from backend error: ${data['message']}');
@@ -193,11 +213,18 @@ class _EmotionDetectionPageState extends State<EmotionDetectionPage> {
 
       switch (type) {
         case 'success':
+        case 'speech':
           parseSpeech(data);
           _isInitialstate = false;
           break;
         default:
-          debugPrint('Unsupported type: ${data['message']}');
+          if (hasSpeechPayload) {
+            debugPrint('Unknown type "$type", fallback parsing as speech');
+            parseSpeech(data);
+            _isInitialstate = false;
+          } else {
+            debugPrint('Unsupported type: $type');
+          }
       }
     } catch (e) {
       debugPrint('Message parsing error: $e');
@@ -251,6 +278,7 @@ class _EmotionDetectionPageState extends State<EmotionDetectionPage> {
       final String? audioJson = await audio.startRecording();
       if (audioJson != null && _channel != null) {
         debugPrint('Sending audio data to backend...');
+        _lastSentPacket = audioJson;
         _channel!.sink.add(audioJson);
       }
     } catch (e) {
@@ -643,11 +671,90 @@ class _EmotionDetectionPageState extends State<EmotionDetectionPage> {
   @override
   Widget build(BuildContext context) {
     final _width = MediaQuery.of(context).size.width;
+    final base = _width < 800 ? _mobileLayout() : _desktopLayout();
 
-    if (_width < 800) {
-      return _mobileLayout();
-    } else {
-      return _desktopLayout();
-    }
+    return Stack(
+      children: [base, _buildTopLeftOverlays()],
+    );
+  }
+
+  Widget _buildTopLeftOverlays() {
+    return SafeArea(
+      child: Align(
+        alignment: Alignment.topLeft,
+        child: Padding(
+          padding: const EdgeInsets.all(12),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Material(
+                color: Colors.white,
+                elevation: 6,
+                borderRadius: BorderRadius.circular(10),
+                child: InkWell(
+                  borderRadius: BorderRadius.circular(10),
+                  onTap: () {
+                    setState(() {
+                      _showMenuOverlay = !_showMenuOverlay;
+                    });
+                  },
+                  child: const Padding(
+                    padding: EdgeInsets.all(10),
+                    child: Icon(Icons.menu),
+                  ),
+                ),
+              ),
+              if (_showMenuOverlay) ...[
+                const SizedBox(height: 8),
+                Material(
+                  color: Colors.white,
+                  elevation: 8,
+                  borderRadius: BorderRadius.circular(12),
+                  child: SizedBox(
+                    width: 240,
+                    child: Padding(
+                      padding: const EdgeInsets.all(12),
+                      child: Row(
+                        children: [
+                          const Expanded(
+                            child: Text(
+                              'Show Debug Panel',
+                              style: TextStyle(fontSize: 14),
+                            ),
+                          ),
+                          Switch(
+                            value: _showDebugPanel,
+                            onChanged: (v) {
+                              setState(() {
+                                _showDebugPanel = v;
+                              });
+                            },
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+              if (_showDebugPanel) ...[
+                const SizedBox(height: 8),
+                DebugPanel(
+                  serverUrl: wsUrl,
+                  connectionStatus: _connectionStatus,
+                  lastSentPacket: _lastSentPacket,
+                  lastReceivedPacket: _lastReceivedPacket,
+                  internalVars: {
+                    '_isRecording': _isRecording,
+                    '_isInitialstate': _isInitialstate,
+                    'speaker': speaker,
+                    'emotion': emotion,
+                  },
+                ),
+              ],
+            ],
+          ),
+        ),
+      ),
+    );
   }
 }
