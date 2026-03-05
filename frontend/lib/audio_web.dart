@@ -47,6 +47,9 @@ class AudioImpl extends AudioControl {
   Future<String?> getStoragePath() async => null; // 웹은 경로가 필요 없음
 
   @override
+  String getAudioFormat() => 'audio/webm;codecs=opus';
+
+  @override
   void dispose() {
     // super.dispose();
   }

@@ -2,9 +2,10 @@
 skinparam classAttributeIconSize 0
 skinparam linetype ortho
 
-class AudioImpl {
-  - AudioRecorder _audioRecorder
-  - StreamSubscription<List<int>>? _recordSub
+class AudioControl {
+  - AudioRecorder _recorder
+  - Completer<String>? _recordCompleter
+  - StreamSubscription<Amplitude>? _ampSub
 
   - bool _isRecording
   - double _audioLevel
@@ -12,54 +13,69 @@ class AudioImpl {
   - Duration _silenceDuration
   - double _silenceThreshold
   - Duration _silenceDurationLimit
-  - Timer? _silenceTimer
-
-  + AudioImpl(onAudioDataReady, onRecordingStateChanged)
-
-  + double audioLevel
-  + Future<bool> initializeAudio()
-  + Future<void> recording()
-  + void dispose()
-
-  - void _analyzeAudioLevel(data: List<int>)
-  - void _checkSilence()
-  - Future<void> _stopTransmitting()
-}
-
-class ChangeNotifier
-
-class AudioControl {
   - List<String> _speakerLanguage
 
   + static AudioControl create()
-
-  + Future<bool> initializeAudio()
-  + Future<void> record()
+  + Future<bool> requestPermission()
+  + Future<String?> startRecording()
+  + Future<void> stopRecording()
 
   + double audioLevel
   + bool isRecording
+  + ValueNotifier<double> audioLevelNotifier
 
   + String getSpeaker1
   + String getSpeaker2
   + speaker1(lang: String)
   + speaker2(lang: String)
-  + playAAC(base64Audio: String)
 
-  + wavFromBuffers(buffers: List<Float32List>): Uint8List
-  + encodeWav(samples: Float32List, sampleRate, numChannels): Uint8List
-  + float32ToPCM16(samples: Float32List): Uint8List
+  + void playVoice(base64Audio: String)
+
+  # Future<String> readRecordBytes(pathOrUrl: String)
+  # RecordConfig getRecordConfig()
+  # Future<String?> getStoragePath()
+  # String getAudioFormat()
+  # void playVoicePerPlatform(audioBytes: Uint8List)
+}
+
+class ChangeNotifier
+
+class "AudioImpl (Web)" as AudioImplWeb {
+  + readRecordBytes(blobUrl): Future<String>
+  + getRecordConfig(): RecordConfig (opus/webm)
+  + getStoragePath(): Future<String?> (null)
+  + getAudioFormat(): String = "audio/webm;codecs=opus"
+  + playVoicePerPlatform(audioBytes): void
+}
+
+class "AudioImpl (Mobile)" as AudioImplMobile {
+  + requestPermission(): Future<bool>
+  + readRecordBytes(path): Future<String>
+  + getRecordConfig(): RecordConfig (opus/ogg)
+  + getStoragePath(): Future<String?> (.ogg temp path)
+  + getAudioFormat(): String = "audio/ogg;codecs=opus"
+  + playVoicePerPlatform(audioBytes): void
+  + dispose(): void
 }
 
 AudioControl --|> ChangeNotifier
-AudioImpl --|> AudioControl
+AudioImplWeb --|> AudioControl
+AudioImplMobile --|> AudioControl
 
-note right of AudioImpl
-Mobile Audio Pipeline
-- record package (PCM 16bit stream)
-- RMS 기반 audioLevel 계산
-- 침묵 감지 (Timer)
-- 자동 stop + Base64 WAV 생성
-- STT 전송용 JSON 생성
+note right of AudioControl
+Shared recording flow
+- Start recorder with platform config/path
+- Track amplitude every 50ms
+- Auto-stop after silence threshold
+- Build JSON command "transcribe"
+- Includes audio_format + base64 audio bytes
+end note
+
+note right of AudioImplMobile
+Android/mobile behavior
+- Record as Opus in OGG container
+- Read bytes then delete temp file immediately
+- TTS bytes are played directly (server sends AAC payload)
 end note
 
 @enduml

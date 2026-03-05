@@ -1,0 +1,27 @@
+@startuml
+title Frontend ↔ Backend Realtime Speech Pipeline\nRecord: Web(webm/opus), Android(ogg/opus) | TTS: AAC bytes
+
+actor User as U
+participant "Flutter App\n(Web/Android/iOS)" as FE
+participant "Backend WS\n(FastAPI)" as BE
+participant "STT/Translation/TTS Pipeline" as PIPE
+
+== Record ==
+U -> FE: Tap "Record"
+FE -> FE: Start recording (record plugin)\n- Web: webm(opus)\n- Android: ogg(opus) + temp file\n- iOS: platform dependent
+alt silence >= 2s OR user taps Stop
+  FE -> FE: Stop recording + base64 encode audio
+  FE -> FE: Mobile only: delete temp recording file immediately
+end
+
+== Send (WebSocket) ==
+FE -> BE: {"command":"transcribe",\n "audio_format":"audio/webm;codecs=opus" | "audio/ogg;codecs=opus",\n "audio":"<base64>",\n "target_lang1":"ko", "target_lang2":"en"}
+BE -> BE: Validate payload/session
+BE -> PIPE: STT -> Translation -> Emotion -> TTS
+
+== Receive ==
+BE --> FE: {"status":"success","type":"success",\n "speaker":"Speaker 1|2",\n "original":{"lang":"..","text":".."},\n "translated":{"lang":"..","text":"..","tts_audio_b64":"<base64 AAC>"},\n "emotion":"...","emotion_scores":{...}}
+FE -> FE: Decode tts_audio_b64 and play on platform
+FE --> U: Playback
+
+@enduml

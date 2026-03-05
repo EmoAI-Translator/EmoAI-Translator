@@ -84,9 +84,8 @@ class AudioControl extends ChangeNotifier {
     final normalized = ((db - floorDb) / (0.0 - floorDb)).clamp(0.0, 1.0);
 
     // Smooth the audio level changes
-    // _audioLevel = (_audioLevel * 0.7) + (normalized * 0.3);
-    audioLevelNotifier.value =
-        (audioLevelNotifier.value * 0.7) + (normalized * 0.3);
+    _audioLevel = (_audioLevel * 0.7) + (normalized * 0.3);
+    audioLevelNotifier.value = _audioLevel;
 
     if (_audioLevel < _silenceThreshold) {
       _silenceDuration += const Duration(milliseconds: 50);
@@ -106,7 +105,7 @@ class AudioControl extends ChangeNotifier {
 
     _isRecording = false;
 
-    await _ampSub!.cancel();
+    await _ampSub?.cancel();
     _ampSub = null;
 
     _audioLevel = 0.0;
@@ -122,7 +121,7 @@ class AudioControl extends ChangeNotifier {
 
     final audioJson = jsonEncode({
       'command': 'transcribe', // 서버와 약속된 오디오 처리 명령어
-      "audio_format": "audio/web,;codecs=opus",
+      'audio_format': getAudioFormat(),
       'audio': bytes,
       "target_lang1": getSpeaker1,
       "target_lang2": getSpeaker2,
@@ -157,6 +156,11 @@ class AudioControl extends ChangeNotifier {
 
   @protected
   Future<String?> getStoragePath() {
+    throw UnsupportedError('Platform not supported');
+  }
+
+  @protected
+  String getAudioFormat() {
     throw UnsupportedError('Platform not supported');
   }
 
