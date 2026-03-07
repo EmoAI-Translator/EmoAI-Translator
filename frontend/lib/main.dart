@@ -1,11 +1,11 @@
 import 'dart:async';
-import 'dart:typed_data';
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:web_socket_channel/web_socket_channel.dart';
 import 'package:provider/provider.dart';
-//For audio, record failed to work on web
 import 'audio_control.dart';
+import 'debug_module.dart';
+// import 'ip.dart';
 
 void main() {
   // debugPrint("hi");
@@ -55,34 +55,23 @@ class EmotionDetectionPage extends StatefulWidget {
 
 class _EmotionDetectionPageState extends State<EmotionDetectionPage> {
   late AudioControl audio;
-  //connect to backend server
 
-  //Use this for simple test
-  // static const String wsUrl = 'ws://localhost:8000/ws/speech';
-  //Minjun's Thinkpad Linux IP
-  static const String wsUrl = 'ws://10.18.160.214:8000/ws/speech';
-  // static const String wsUrl = 'ws://172.25.54.59:8000/ws/speech';
-  // static const String wsUrl = 'wss://emo-ai.com/dev';
-  // web.MediaStream? _stream;
+  //connect to backend server
+  String wsUrl = 'ws://localhost:8000/ws/speech';
   WebSocketChannel? _channel;
 
-  // // Audio analysis
-  // web.AudioContext? _audioContext;
-  // web.AnalyserNode? _analyserNode;
-  // web.MediaStreamAudioSourceNode? _audioSource;
-  // web.ScriptProcessorNode? _scriptProcessor;
-
-  final List<Float32List> _audioBuffers = []; //buffer
   bool _isRecording = false;
-  String _connectionStatus = 'Disconnected';
+  int _connectionStatus = 1;
   double _audioLevel = 0.0; // 0.0 ~ 1.0
   bool recorderSet = false;
-
-  final List<Float32List> _buffers = [];
+  bool _showMenuOverlay = false;
+  bool _showDebugPanel = false;
+  String? _lastSentPacket;
+  String? _lastReceivedPacket;
 
   //for frontend
   List<List<String>> _speakerText = [[], []];
-  bool _isInitialstate = true;
+  bool _isInitialstate = true; // 0 normal, 1 disconnected, 2 error
   List<String> _speakerLanguage = ['ko', 'en'];
   List<String> _speakerEmotion = ['neu', 'neu'];
 
@@ -135,18 +124,18 @@ class _EmotionDetectionPageState extends State<EmotionDetectionPage> {
     audio.speaker1 = 'ko';
     audio.speaker2 = 'en';
 
-    audio.setOnAudioDataReady((audioJson) {
-      if (_channel != null) {
-        _channel?.sink.add(audioJson);
-      }
-    });
+    //   audio.setOnAudioDataReady((audioJson) {
+    //     if (_channel != null) {
+    //       _channel?.sink.add(audioJson);
+    //     }
+    //   });
 
-    audio.setOnRecordingStateChanged((isRecording) {
-      setState(() {
-        _isRecording = isRecording;
-        if (!isRecording) _isInitialstate = false;
-      });
-    });
+    //   audio.setOnRecordingStateChanged((isRecording) {
+    //     setState(() {
+    //       _isRecording = isRecording;
+    //       if (!isRecording) _isInitialstate = false;
+    //     });
+    //   });
   }
 
   void _connectWebSocket() {
@@ -154,7 +143,7 @@ class _EmotionDetectionPageState extends State<EmotionDetectionPage> {
       _channel = WebSocketChannel.connect(Uri.parse(wsUrl));
 
       setState(() {
-        _connectionStatus = 'Connected';
+        _connectionStatus = 0;
         debugPrint('🔗 Connected to WebSocket at $wsUrl');
       });
 
@@ -165,13 +154,13 @@ class _EmotionDetectionPageState extends State<EmotionDetectionPage> {
         onError: (error) {
           debugPrint('❌ WebSocket error: $error');
           setState(() {
-            _connectionStatus = 'Error';
+            _connectionStatus = 2;
           });
         },
         onDone: () {
           debugPrint('❌ WebSocket disconnected');
           setState(() {
-            _connectionStatus = 'Disconnected';
+            _connectionStatus = 1;
           });
         },
       );
@@ -180,9 +169,26 @@ class _EmotionDetectionPageState extends State<EmotionDetectionPage> {
     } catch (e) {
       debugPrint('❌ WebSocket connection error: $e');
       setState(() {
-        _connectionStatus = 'Error';
+        _connectionStatus = 2;
       });
     }
+  }
+
+  void _updateServerUrl(String newUrl) {
+    // Close existing connection
+    _channel?.sink.close();
+
+    setState(() {
+      wsUrl = newUrl;
+      _connectionStatus = 1;
+    });
+
+    debugPrint('🔄 Server URL changed to: $newUrl');
+
+    // Reconnect with new URL
+    Future.delayed(const Duration(milliseconds: 500), () {
+      _connectWebSocket();
+    });
   }
 
   //  Normally, backend send messages in the following format:
@@ -197,59 +203,110 @@ class _EmotionDetectionPageState extends State<EmotionDetectionPage> {
   // }
 
   void _handleWebSocketMessage(dynamic message) {
+    final rawMessage = '$message';
+    setState(() {
+      _lastReceivedPacket = rawMessage;
+    });
+
     try {
-      final data = jsonDecode(message);
-      final status = data['status'] as String?;
-      final type = data['type'] as String?;
+      final decoded = jsonDecode(rawMessage);
+      if (decoded is! Map<String, dynamic>) {
+        debugPrint('Unsupported packet shape: ${decoded.runtimeType}');
+        return;
+      }
 
-      if (status == 'success' && type == 'speech') {
-        debugPrint('✅ Message from backend: $data');
-        setState(() {
-          speaker = data['speaker'] ?? 'Speaker 1';
-          original = data['original'] ?? {};
-          translated = data['translated'] ?? {};
-          emotion = data['emotion'] ?? '';
-          emotion_scores = data['emotion_scores'] ?? {};
+      final data = decoded;
+      final status = data['status']?.toString();
+      final type = data['type']?.toString();
+      final hasSpeechPayload =
+          data['translated'] != null ||
+          data['original'] != null ||
+          data['speaker'] != null;
 
-          // Play TTS audio if available
-          final audioB64 = translated['tts_audio_b64'];
-          if (audioB64 != null) {
-            debugPrint('🔊 Playing TTS audio for $speaker');
-            audio.playAudioBase64(audioB64);
-          }
+      if (status == 'error') {
+        debugPrint('Message from backend error: ${data['message']}');
+        return;
+      }
 
-          if (speaker == 'Speaker 1') {
-            _speakerText[0].add("${translated['text'] ?? ''}");
-            setState(() {
-              _speakerLanguage[1] = translated['lang'] ?? 'ko';
-              _speakerEmotion[0] = emotion;
-            });
+      switch (type) {
+        case 'success':
+        case 'speech':
+          parseSpeech(data);
+          _isInitialstate = false;
+          break;
+        default:
+          if (hasSpeechPayload) {
+            debugPrint('Unknown type "$type", fallback parsing as speech');
+            parseSpeech(data);
+            _isInitialstate = false;
           } else {
-            _speakerText[1].add("${translated['text'] ?? ''}");
-            setState(() {
-              _speakerEmotion[1] = emotion;
-            });
+            debugPrint('Unsupported type: $type');
           }
-        });
-
-        debugPrint(
-          '🗣️ Speaker: $speaker, Original: ${original['text']}, Translated: ${translated['text']}, Emotion: $emotion',
-        );
-      } else if (status == 'error') {
-        debugPrint('❌ Message from backend error: ${data['message']}');
       }
     } catch (e) {
-      debugPrint('❌ Message parsing error: $e');
+      debugPrint('Message parsing error: $e');
     }
   }
 
-  Future<void> _startTransmitting() async {
-    if (_isRecording || _channel == null) return;
-    await audio.startRecording();
+  void parseSpeech(dynamic data) {
     setState(() {
-      _isRecording = true;
+      speaker = data['speaker'] ?? 'Speaker 1';
+      original = data['original'] ?? {};
+      translated = data['translated'] ?? {};
+      emotion = data['emotion'] ?? '';
+      emotion_scores = data['emotion_scores'] ?? {};
+
+      // Play TTS audio if available
+      final audioB64 = translated['tts_audio_b64'];
+      if (audioB64 != null) {
+        debugPrint('🔊 Playing TTS audio for $speaker');
+        audio.playVoice(audioB64);
+      }
+
+      if (speaker == 'Speaker 1') {
+        _speakerText[0].add("${translated['text'] ?? ''}");
+        setState(() {
+          if (_isInitialstate) {
+            _speakerLanguage[1] = translated['lang'] ?? 'ko';
+          }
+          _speakerEmotion[0] = emotion;
+        });
+      } else {
+        _speakerText[1].add("${translated['text'] ?? ''}");
+        setState(() {
+          _speakerEmotion[1] = emotion;
+        });
+      }
     });
-    debugPrint('▶️ Started transmitting');
+
+    debugPrint(
+      'Speaker: $speaker, Original: ${original['text']}, Translated: ${translated['text']}, Emotion: $emotion',
+    );
+  }
+
+  Future<void> _startRecording() async {
+    if (_isRecording || _channel == null) return;
+    debugPrint('Started recording');
+
+    try {
+      setState(() {
+        _isRecording = true;
+      });
+      final String? audioJson = await audio.startRecording();
+      if (audioJson != null && _channel != null) {
+        debugPrint('Sending audio data to backend...');
+        _lastSentPacket = audioJson;
+        _channel!.sink.add(audioJson);
+      }
+    } catch (e) {
+      debugPrint('Recording error: $e');
+    } finally {
+      if (_isRecording) {
+        setState(() {
+          _isRecording = false;
+        });
+      }
+    }
   }
 
   // Formet to send to backend
@@ -259,27 +316,29 @@ class _EmotionDetectionPageState extends State<EmotionDetectionPage> {
   //     "target_lang": "en"
   // }
 
-  Future<void> _stopTransmitting() async {
+  Future<void> _stopRecording() async {
     await audio.stopRecording();
   }
 
   @override
   void dispose() {
-    // _audioAnalyzerTimer?.cancel();
     _channel?.sink.close();
-    // _audioSource?.disconnect();
-    // _audioContext?.close();
-
-    // if (_stream != null) {
-    //   for (int i = 0; i < _stream!.getTracks().length; i++) {
-    //     _stream!.getTracks()[i].stop();
-    //   }
-    // }
     super.dispose();
   }
   ///////////////////////////////////////////////////////////////////
   /// UI Area
   ///////////////////////////////////////////////////////////////////
+
+  String getConnStat() {
+    switch (_connectionStatus) {
+      case 0:
+        return "Connected";
+      case 1:
+        return "Disconnected";
+      default:
+        return "Error";
+    }
+  }
 
   Widget _desktopLayout() {
     final height = MediaQuery.of(context).size.height;
@@ -340,18 +399,17 @@ class _EmotionDetectionPageState extends State<EmotionDetectionPage> {
                                       mainAxisSize: MainAxisSize.min,
                                       children: [
                                         Icon(
-                                          _connectionStatus == 'Connected'
+                                          _connectionStatus == 0
                                               ? Icons.check_circle
                                               : Icons.error,
-                                          color:
-                                              _connectionStatus == 'Connected'
+                                          color: _connectionStatus == 0
                                               ? Colors.green
                                               : Colors.red,
                                           size: 20,
                                         ),
                                         const SizedBox(width: 8),
                                         Text(
-                                          _connectionStatus,
+                                          getConnStat(),
                                           style: const TextStyle(
                                             // color: Colors.white,
                                             color: Colors.black,
@@ -511,16 +569,15 @@ class _EmotionDetectionPageState extends State<EmotionDetectionPage> {
   }
 
   Widget _micButton(double height) {
-    return Consumer<AudioControl>(
-      builder: (context, audioControl, child) {
-        final buttonSize = height * 0.2;
-
-        // Calculate shadow radius based on audio level
-        final baseRadius = buttonSize * 0.1;
-        final maxRadius = buttonSize * 0.5;
+    final audioControl = Provider.of<AudioControl>(context, listen: false);
+    final buttonSize = height * 0.2;
+    final baseRadius = buttonSize * 0.1;
+    final maxRadius = buttonSize * 0.5;
+    return ValueListenableBuilder<double>(
+      valueListenable: audioControl.audioLevelNotifier,
+      builder: (context, audioLevel, child) {
         final shadowRadius =
-            baseRadius +
-            (audioControl.audioLevel * (maxRadius - baseRadius) * 2);
+            baseRadius + (audioLevel * (maxRadius - baseRadius) * 2);
 
         return Stack(
           alignment: Alignment.center,
@@ -545,10 +602,10 @@ class _EmotionDetectionPageState extends State<EmotionDetectionPage> {
             ElevatedButton(
               onPressed: () {
                 if (_isRecording) {
-                  _stopTransmitting();
+                  _stopRecording();
                 } else {
                   if (_channel != null) {
-                    _startTransmitting();
+                    _startRecording();
                   }
                 }
               },
@@ -631,11 +688,89 @@ class _EmotionDetectionPageState extends State<EmotionDetectionPage> {
   @override
   Widget build(BuildContext context) {
     final _width = MediaQuery.of(context).size.width;
+    final base = _width < 800 ? _mobileLayout() : _desktopLayout();
 
-    if (_width < 800) {
-      return _mobileLayout();
-    } else {
-      return _desktopLayout();
-    }
+    return Stack(children: [base, _buildTopLeftOverlays()]);
+  }
+
+  Widget _buildTopLeftOverlays() {
+    return SafeArea(
+      child: Align(
+        alignment: Alignment.topLeft,
+        child: Padding(
+          padding: const EdgeInsets.all(12),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Material(
+                color: Colors.white,
+                elevation: 6,
+                borderRadius: BorderRadius.circular(10),
+                child: InkWell(
+                  borderRadius: BorderRadius.circular(10),
+                  onTap: () {
+                    setState(() {
+                      _showMenuOverlay = !_showMenuOverlay;
+                    });
+                  },
+                  child: const Padding(
+                    padding: EdgeInsets.all(10),
+                    child: Icon(Icons.menu),
+                  ),
+                ),
+              ),
+              if (_showMenuOverlay) ...[
+                const SizedBox(height: 8),
+                Material(
+                  color: Colors.white,
+                  elevation: 8,
+                  borderRadius: BorderRadius.circular(12),
+                  child: SizedBox(
+                    width: 240,
+                    child: Padding(
+                      padding: const EdgeInsets.all(12),
+                      child: Row(
+                        children: [
+                          const Expanded(
+                            child: Text(
+                              'Show Debug Panel',
+                              style: TextStyle(fontSize: 14),
+                            ),
+                          ),
+                          Switch(
+                            value: _showDebugPanel,
+                            onChanged: (v) {
+                              setState(() {
+                                _showDebugPanel = v;
+                              });
+                            },
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+              if (_showDebugPanel) ...[
+                const SizedBox(height: 8),
+                DebugPanel(
+                  serverUrl: wsUrl,
+                  connectionStatus: _connectionStatus,
+                  lastSentPacket: _lastSentPacket,
+                  lastReceivedPacket: _lastReceivedPacket,
+                  internalVars: {
+                    '_isRecording': _isRecording,
+                    '_isInitialstate': _isInitialstate,
+                    'speaker': speaker,
+                    'emotion': emotion,
+                  },
+                  onServerUrlChanged: _updateServerUrl,
+                ),
+              ],
+            ],
+          ),
+        ),
+      ),
+    );
   }
 }

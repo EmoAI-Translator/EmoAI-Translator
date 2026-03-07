@@ -171,3 +171,91 @@ cython_debug/
 .pypirc
 
 models/
+
+#flutter and fronted
+.dart_tool/
+.packages
+.pub/
+build/
+flutter_export_environment.sh
+
+# Flutter plugin dependency files
+.flutter-plugins
+.flutter-plugins-dependencies
+
+# Coverage
+coverage/
+
+# ================================
+# Android
+# ================================
+
+android/.gradle/
+android/app/build/
+android/local.properties
+android/key.properties
+
+# Generated files
+android/app/generated/
+
+# ================================
+# iOS
+# ================================
+
+ios/Pods/
+ios/.symlinks/
+ios/Flutter/Flutter.framework
+ios/Flutter/App.framework
+ios/Flutter/Flutter.podspec
+ios/ServiceDefinitions.json
+
+# Xcode
+ios/Runner.xcworkspace/
+ios/Runner.xcodeproj/project.xcworkspace/
+*.xcuserstate
+*.xcuserdata/
+DerivedData/
+
+# ================================
+# macOS
+# ================================
+
+macos/Pods/
+macos/Flutter/Flutter.framework
+macos/Flutter/App.framework
+
+# ================================
+# Windows
+# ================================
+
+windows/flutter/ephemeral/
+
+# ================================
+# Linux
+# ================================
+
+linux/flutter/ephemeral/
+
+# ================================
+# Web
+# ================================
+
+build/web/
+web/.dart_tool/
+
+# ================================
+# IDE
+# ================================
+
+.idea/
+.vscode/
+*.iml
+
+# ================================
+# Misc
+# ================================
+
+*.log
+*.lock
+*.tmp
+.DS_Store

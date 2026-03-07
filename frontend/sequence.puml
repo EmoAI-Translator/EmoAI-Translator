@@ -2,29 +2,32 @@
 actor UI
 
 participant AudioControl
-participant AudioImpl
+participant "AudioImpl (Platform)" as AudioImpl
 participant AudioRecorder
-participant Timer
 
 UI -> AudioControl : startRecording()
-AudioControl -> AudioImpl : startRecording()
+AudioControl -> AudioImpl : getRecordConfig()
+AudioControl -> AudioImpl : getStoragePath()
+AudioControl -> AudioRecorder : start(config, path)
 
-AudioImpl -> AudioRecorder : startStream()
-AudioRecorder --> AudioImpl : PCM data stream
-
-loop audio chunks
-  AudioImpl -> AudioImpl : _analyzeAudioLevel()
+loop every 50ms
+  AudioRecorder --> AudioControl : onAmplitudeChanged()
+  AudioControl -> AudioControl : _analyzeAudioLevel()
 end
 
-AudioImpl -> Timer : periodic check
-Timer -> AudioImpl : _checkSilence()
+alt silence >= 2s OR user taps stop
+  UI -> AudioControl : stopRecording()
+  AudioControl -> AudioRecorder : stop()
+  AudioRecorder --> AudioControl : path/blobUrl
+  AudioControl -> AudioImpl : readRecordBytes(path/blobUrl)
+  AudioImpl --> AudioControl : base64 audio
 
-alt silence >= 2s
-  AudioImpl -> AudioImpl : _stopTransmitting()
-  AudioImpl -> AudioImpl : stopRecording()
-  AudioImpl -> AudioRecorder : stop()
-  AudioImpl -> AudioImpl : PCM → WAV
-  AudioImpl -> AudioControl : _onAudioDataReady(audioJson)
+  alt mobile implementation
+    AudioImpl -> AudioImpl : delete temp recording file
+  end
+
+  AudioControl --> UI : Future<String> completed\n(audioJson: command=transcribe)
+  UI -> UI : send audioJson via WebSocket
 end
 
 @enduml
