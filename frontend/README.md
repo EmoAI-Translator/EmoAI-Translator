@@ -1,10 +1,10 @@
 # Frontend (Flutter)
 
-A cross-platform Flutter application that records audio, sends it to the backend via WebSocket, and displays translated text with detected emotions.
+A cross-platform Flutter application that records audio, sends it to the backend via WebSocket, and displays translated text and tts with detected emotions.
 
 ## Platform support
-- Android, iOS
-- Web (limited functionality due to audio recording constraints)
+- Android
+- Web
 
 ## Prerequisites
 - Flutter SDK (tested on 3.x)
@@ -36,6 +36,13 @@ Tap the menu icon (≡) in the top‑left corner to open configuration overlays.
 - `audio_control.dart` – abstraction over platform-specific recording/playback
 - `audio_mobile.dart` / `audio_web.dart` – implementations for mobile and web
 - `debug_module.dart` – debug overlay widget
+
+## Architecture diagrams
+Several PlantUML diagrams are included to illustrate system structure and interactions. You can view them with any PlantUML-compatible tool.
+
+- `communication.puml` high-level component interaction between frontend and backend
+- `sequence.puml` message flow for a typical speech/translation exchange
+- `Structure.puml` shows project/module layout and dependencies
 
 ## Customization
 - Languages, emotion colors, and UI layout can be adjusted in `main.dart`.
