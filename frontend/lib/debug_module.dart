@@ -14,6 +14,7 @@ class DebugPanel extends StatefulWidget {
     this.lastSentPacket,
     this.lastReceivedPacket,
     this.internalVars,
+    this.onServerUrlChanged,
   });
 
   // 외부 코드 수정 없이도 사용할 수 있도록 전부 optional
@@ -22,6 +23,7 @@ class DebugPanel extends StatefulWidget {
   final String? lastSentPacket;
   final String? lastReceivedPacket;
   final Map<String, Object?>? internalVars;
+  final Function(String)? onServerUrlChanged;
 
   @override
   State<DebugPanel> createState() => _DebugPanelState();
@@ -32,11 +34,13 @@ class _DebugPanelState extends State<DebugPanel> {
   Duration _silenceElapsed = Duration.zero;
   static const Duration _tick = Duration(milliseconds: 200);
   static const double _silenceThreshold = 0.1;
+  late TextEditingController _urlController;
 
   @override
   void initState() {
     super.initState();
     _ticker = Timer.periodic(_tick, (_) => _updateSilenceClock());
+    _urlController = TextEditingController(text: widget.serverUrl ?? '');
   }
 
   void _updateSilenceClock() {
@@ -65,6 +69,7 @@ class _DebugPanelState extends State<DebugPanel> {
   @override
   void dispose() {
     _ticker?.cancel();
+    _urlController.dispose();
     super.dispose();
   }
 
@@ -126,6 +131,53 @@ class _DebugPanelState extends State<DebugPanel> {
                 _kv('Server URL', server),
                 _kv('Server IP', serverIp),
                 _kv('Connection', _connLabel(widget.connectionStatus)),
+                const SizedBox(height: 8),
+                const Divider(height: 8),
+                const SizedBox(height: 8),
+                const Text(
+                  'Change Server URL',
+                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 11),
+                ),
+                const SizedBox(height: 6),
+                TextField(
+                  controller: _urlController,
+                  decoration: InputDecoration(
+                    isDense: true,
+                    contentPadding: const EdgeInsets.symmetric(
+                      horizontal: 8,
+                      vertical: 6,
+                    ),
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(4),
+                    ),
+                    hintText: 'e.g., ws://192.168.1.100:8000/ws/speech',
+                    hintStyle: const TextStyle(fontSize: 10),
+                  ),
+                  style: const TextStyle(fontSize: 10),
+                ),
+                const SizedBox(height: 6),
+                SizedBox(
+                  width: double.infinity,
+                  child: ElevatedButton(
+                    onPressed: () {
+                      if (_urlController.text.isNotEmpty &&
+                          widget.onServerUrlChanged != null) {
+                        widget.onServerUrlChanged!(_urlController.text);
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(
+                            content: Text('Server URL updated'),
+                            duration: Duration(seconds: 2),
+                          ),
+                        );
+                      }
+                    },
+                    style: ElevatedButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(vertical: 6),
+                    ),
+                    child: const Text('Apply', style: TextStyle(fontSize: 11)),
+                  ),
+                ),
+                const Divider(height: 16),
                 const Divider(height: 16),
                 _kv(
                   'Silence Elapsed',
@@ -147,17 +199,17 @@ class _DebugPanelState extends State<DebugPanel> {
                 const Divider(height: 16),
                 _kv('Sent Packet', _trimPacket(widget.lastSentPacket)),
                 _kv('Recv Packet', _trimPacket(widget.lastReceivedPacket)),
-                if (widget.internalVars != null && widget.internalVars!.isNotEmpty)
-                  ...[
-                    const Divider(height: 16),
-                    const Text(
-                      'Internal Vars',
-                      style: TextStyle(fontWeight: FontWeight.bold),
-                    ),
-                    const SizedBox(height: 4),
-                    for (final entry in widget.internalVars!.entries)
-                      _kv(entry.key, '${entry.value}'),
-                  ],
+                if (widget.internalVars != null &&
+                    widget.internalVars!.isNotEmpty) ...[
+                  const Divider(height: 16),
+                  const Text(
+                    'Internal Vars',
+                    style: TextStyle(fontWeight: FontWeight.bold),
+                  ),
+                  const SizedBox(height: 4),
+                  for (final entry in widget.internalVars!.entries)
+                    _kv(entry.key, '${entry.value}'),
+                ],
               ],
             ),
           ),

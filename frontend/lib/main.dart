@@ -57,7 +57,7 @@ class _EmotionDetectionPageState extends State<EmotionDetectionPage> {
   late AudioControl audio;
 
   //connect to backend server
-  static String wsUrl = 'ws://localhost:8000/ws/speech';
+  String wsUrl = 'ws://localhost:8000/ws/speech';
   WebSocketChannel? _channel;
 
   bool _isRecording = false;
@@ -172,6 +172,23 @@ class _EmotionDetectionPageState extends State<EmotionDetectionPage> {
         _connectionStatus = 2;
       });
     }
+  }
+
+  void _updateServerUrl(String newUrl) {
+    // Close existing connection
+    _channel?.sink.close();
+
+    setState(() {
+      wsUrl = newUrl;
+      _connectionStatus = 1;
+    });
+
+    debugPrint('🔄 Server URL changed to: $newUrl');
+
+    // Reconnect with new URL
+    Future.delayed(const Duration(milliseconds: 500), () {
+      _connectWebSocket();
+    });
   }
 
   //  Normally, backend send messages in the following format:
@@ -673,9 +690,7 @@ class _EmotionDetectionPageState extends State<EmotionDetectionPage> {
     final _width = MediaQuery.of(context).size.width;
     final base = _width < 800 ? _mobileLayout() : _desktopLayout();
 
-    return Stack(
-      children: [base, _buildTopLeftOverlays()],
-    );
+    return Stack(children: [base, _buildTopLeftOverlays()]);
   }
 
   Widget _buildTopLeftOverlays() {
@@ -749,6 +764,7 @@ class _EmotionDetectionPageState extends State<EmotionDetectionPage> {
                     'speaker': speaker,
                     'emotion': emotion,
                   },
+                  onServerUrlChanged: _updateServerUrl,
                 ),
               ],
             ],
