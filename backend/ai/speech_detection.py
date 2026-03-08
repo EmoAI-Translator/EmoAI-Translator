@@ -11,6 +11,7 @@ from ai.speech_translation import translate_json_list
 import warnings
 import torch
 import librosa
+from time import perf_counter
 from transformers import AutoFeatureExtractor, AutoModelForAudioClassification
 
 warnings.filterwarnings(
@@ -54,23 +55,51 @@ def detect_emotion_from_audio(wav_path: str):
 # -------------------------------
 def detect_language_and_transcribe_from_base64(audio_b64: str):
     """Decode base64 WAV, transcribe, detect language."""
+    timings = {}
+    t0 = perf_counter()
+
+    t1 = perf_counter()
     audio_bytes = base64.b64decode(audio_b64)
+    t2 = perf_counter()
+    timings["decode_b64"] = (t2 - t1) * 1000
+
+    t3 = perf_counter()
     with tempfile.NamedTemporaryFile(delete=False, suffix=".wav") as temp_wav:
         temp_wav.write(audio_bytes)
         temp_path = temp_wav.name
+    t4 = perf_counter()
+    timings["write_temp"] = (t4 - t3) * 1000
 
     try:
+        t5 = perf_counter()
         result = whisper_model.transcribe(temp_path)
+        t6 = perf_counter()
+        timings["whisper"] = (t6 - t5) * 1000
+
+        t7 = perf_counter()
         emotion_result = detect_emotion_from_audio(temp_path)
+        t8 = perf_counter()
+        timings["emotion"] = (t8 - t7) * 1000
     finally:
+        t9 = perf_counter()
         os.remove(temp_path)
+        t10 = perf_counter()
+        timings["cleanup"] = (t10 - t9) * 1000
+
+    timings["detect_total"] = (perf_counter() - t0) * 1000
 
     language = result.get("language", "unknown")
     text = result.get("text", "").strip()
     emotion = emotion_result["emotion"]
     scores = emotion_result["scores"]
 
-    return {"language": language, "text": text, "emotion": emotion, "scores": scores}
+    return {
+        "language": language,
+        "text": text,
+        "emotion": emotion,
+        "scores": scores,
+        "timings": timings,
+    }
 
 
 # -------------------------------

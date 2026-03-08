@@ -1,6 +1,8 @@
 import base64
 import tempfile
 import asyncio
+import logging
+from time import perf_counter
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Request
 from fastapi.middleware.cors import CORSMiddleware
 from ai.speech_translation import translate_json_list
@@ -17,6 +19,12 @@ import subprocess
 #mongo db (not gonnna use)
 # from db.connection import db
 # from pymongo import MongoClient
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(message)s",
+)
+logger = logging.getLogger(__name__)
 
 app = FastAPI()
 
@@ -101,7 +109,7 @@ async def speech_websocket(websocket: WebSocket):
 
     global last_source_lang, last_target_lang
     await websocket.accept()
-    print("WebSocket connected for speech detection.")
+    logger.info("WebSocket connected for speech detection.")
 
     speaker_id = 1
 
@@ -115,16 +123,30 @@ async def speech_websocket(websocket: WebSocket):
                 audio_b64 = data.get("audio")
                 audio_format = data.get("audio_format")
 
-                print(
-                    f"[AUDIO] format={audio_format} b64_len={len(audio_b64) if audio_b64 else None}"
+                logger.info(
+                    "[AUDIO] format=%s b64_len=%s",
+                    audio_format,
+                    len(audio_b64) if audio_b64 else None,
                 )
 
                 incoming_target_lang = data.get("target_lang1")
 
                 try:
+                    timings = {}
+                    t0 = perf_counter()
+
+                    t1 = perf_counter()
                     opus_b64 = convert_to_opus_base64(audio_b64, audio_format)
-                    print(f"[AUDIO] converted_opus_b64_len={len(opus_b64)}")
+                    t2 = perf_counter()
+                    timings['convert'] = (t2 - t1) * 1000
+                    logger.info("[AUDIO] converted_opus_b64_len=%s", len(opus_b64))
+
+                    t3 = perf_counter()
                     result = detect_language_and_transcribe_from_base64(opus_b64)
+                    t4 = perf_counter()
+                    timings['detect'] = (t4 - t3) * 1000
+                    detect_timings = result.get("timings", {})
+
                     source_lang = result["language"]
                     text = result["text"]
                     emotion = result["emotion"]
@@ -140,6 +162,7 @@ async def speech_websocket(websocket: WebSocket):
                         target_lang = last_source_lang
                         source_lang = last_target_lang
 
+                    t5 = perf_counter()
                     translated = translate_json_list(
                         [
                             {
@@ -150,16 +173,25 @@ async def speech_websocket(websocket: WebSocket):
                         ],
                         target_lang=target_lang,
                     )[0]
+                    t6 = perf_counter()
+                    timings['translate'] = (t6 - t5) * 1000
+
+                    t7 = perf_counter()
+                    tts_audio = generate_tts(
+                        translated.get("translated_text"), lang=target_lang if target_lang else "en"
+                    )
+                    t8 = perf_counter()
+                    timings['tts'] = (t8 - t7) * 1000
 
                     translated_payload = {
                         "timestamp": translated.get("timestamp"),
                         "lang": target_lang,
                         "text": translated.get("translated_text"),
-                        "tts_audio_b64": generate_tts(
-                            translated.get("translated_text"), lang=target_lang if target_lang else "en"
-                        ),
+                        "tts_audio_b64": tts_audio,
                     }
 
+                    # send response and log timings server-side only
+                    t9 = perf_counter()
                     await websocket.send_json(
                         {
                             "status": "success",
@@ -171,10 +203,31 @@ async def speech_websocket(websocket: WebSocket):
                             "emotion_scores": scores,
                         }
                     )
+                    t10 = perf_counter()
+                    timings['send'] = (t10 - t9) * 1000
+                    timings["total"] = (t10 - t0) * 1000
+                    logger.info(
+                        "[TIMINGS] convert=%.1fms detect_total=%.1fms detect_outer=%.1fms "
+                        "decode_b64=%.1fms write_temp=%.1fms whisper=%.1fms emotion=%.1fms cleanup=%.1fms "
+                        "translate=%.1fms tts=%.1fms send=%.1fms total=%.1fms",
+                        timings["convert"],
+                        detect_timings.get("detect_total", timings["detect"]),
+                        timings["detect"],
+                        detect_timings.get("decode_b64", 0.0),
+                        detect_timings.get("write_temp", 0.0),
+                        detect_timings.get("whisper", 0.0),
+                        detect_timings.get("emotion", 0.0),
+                        detect_timings.get("cleanup", 0.0),
+                        timings["translate"],
+                        timings["tts"],
+                        timings["send"],
+                        timings["total"],
+                    )
 
                     speaker_id = 2 if speaker_id == 1 else 1
 
                 except Exception as e:
+                    logger.exception("Error while processing transcribe command")
                     await websocket.send_json({"status": "error", "message": str(e)})
 
             else:
@@ -183,7 +236,7 @@ async def speech_websocket(websocket: WebSocket):
                 )
 
     except WebSocketDisconnect:
-        print("Speech WebSocket disconnected.")
+        logger.info("Speech WebSocket disconnected.")
 
 
 @app.post("/save_emotion")
