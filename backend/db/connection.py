@@ -1,5 +1,6 @@
 from pymongo import MongoClient
 from dotenv import load_dotenv
+import logging
 import os
 
 # 1. Call .envfile
@@ -13,4 +14,6 @@ DB_NAME = os.getenv("DB_NAME")
 client = MongoClient(MONGO_URI)
 db = client[DB_NAME]
 
-print("MongoDB Connected Successfully:", DB_NAME)
+logger = logging.getLogger(__name__)
+
+logger.info("MongoDB connected successfully: %s", DB_NAME)

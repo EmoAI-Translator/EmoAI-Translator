@@ -1,6 +1,9 @@
 import json
+import logging
 import re
 from typing import Dict, List, Tuple
+
+logger = logging.getLogger(__name__)
 
 # --------------------------------------------------
 # 1) Scenario-based symptom pools (KO canonical)
@@ -485,8 +488,16 @@ def save_tier1_symptoms(
     data = build_symptom_entries(max_items=max_items)
     with open(filepath, "w", encoding="utf-8") as f:
         json.dump(data, f, ensure_ascii=False, indent=2)
-    print(f"✅ Saved {len(data)} Tier1 symptom entries with aliases → {filepath}")
+    logger.info(
+        "Saved %s Tier1 symptom entries with aliases -> %s",
+        len(data),
+        filepath,
+    )
 
 
 if __name__ == "__main__":
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s [%(levelname)s] %(message)s",
+    )
     save_tier1_symptoms()

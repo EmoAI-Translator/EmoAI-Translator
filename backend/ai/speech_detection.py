@@ -1,4 +1,5 @@
 import base64
+import logging
 import queue
 import threading
 import time
@@ -17,6 +18,7 @@ from transformers import AutoFeatureExtractor, AutoModelForAudioClassification
 warnings.filterwarnings(
     "ignore", message="FP16 is not supported on CPU; using FP32 instead"
 )
+logger = logging.getLogger(__name__)
 
 # -------------------------------
 # Load Models Once
@@ -114,31 +116,35 @@ def live_turn_taking_recognition():
 
     try:
         mic = sr.Microphone()
-    except Exception as e:
-        print("Microphone not found or cannot be opened:", e)
+    except Exception:
+        logger.exception("Microphone not found or cannot be opened")
         raise
 
     with mic as source:
-        print("Adjusting for ambient noise...")
+        logger.info("Adjusting for ambient noise...")
         r.adjust_for_ambient_noise(source, duration=1.0)
-        print(f"Done. Energy threshold: {r.energy_threshold}")
+        logger.info(
+            "Ambient noise calibration complete. Energy threshold: %s",
+            r.energy_threshold,
+        )
 
     stop_flag = threading.Event()
     recognized_results = []
 
     def recognize_loop():
         speaker_id = 1
-        print("🎤 Listening... Speak into your microphone. (Ctrl+C to stop)")
+        logger.info("Listening. Speak into your microphone. Press Ctrl+C to stop.")
 
         while not stop_flag.is_set():
             with mic as source:
                 try:
-                    print(
-                        f"\n🗣️  Speaker {speaker_id} speaking... (will stop on silence)"
+                    logger.info(
+                        "Speaker %s speaking. Recording will stop on silence.",
+                        speaker_id,
                     )
                     audio = r.listen(source, timeout=None)
-                except Exception as inner_e:
-                    print("Recording error:", inner_e)
+                except Exception:
+                    logger.exception("Recording error")
                     continue
 
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -166,8 +172,14 @@ def live_turn_taking_recognition():
                 )
 
                 if text:
-                    print(f"[{timestamp}] Speaker {speaker_id} ({lang}) → {text}")
-                    print(f"   🎭 Emotion: {emotion} {scores}")
+                    logger.info(
+                        "[%s] Speaker %s (%s) -> %s",
+                        timestamp,
+                        speaker_id,
+                        lang,
+                        text,
+                    )
+                    logger.info("[%s] Emotion: %s %s", timestamp, emotion, scores)
 
                     recognized_results.append(
                         {
@@ -182,10 +194,10 @@ def live_turn_taking_recognition():
 
                     speaker_id = 2 if speaker_id == 1 else 1
                 else:
-                    print(f"[{timestamp}] Silence detected.")
+                    logger.info("[%s] Silence detected.", timestamp)
 
-            except Exception as e:
-                print(f"[{timestamp}] Recognition error:", e)
+            except Exception:
+                logger.exception("[%s] Recognition error", timestamp)
 
     recorder = threading.Thread(target=recognize_loop, daemon=True)
     recorder.start()
@@ -194,10 +206,10 @@ def live_turn_taking_recognition():
         while True:
             time.sleep(0.5)
     except KeyboardInterrupt:
-        print("\nUser requested stop. Returning recognized results...")
+        logger.info("User requested stop. Returning recognized results...")
         stop_flag.set()
         recorder.join(timeout=2)
-        print("Shutdown complete.")
+        logger.info("Shutdown complete.")
         return recognized_results
 
 
@@ -205,14 +217,18 @@ def live_turn_taking_recognition():
 # Main Entry
 # -------------------------------
 if __name__ == "__main__":
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s [%(levelname)s] %(message)s",
+    )
     results = live_turn_taking_recognition()
-    print("\n📝 Final recognized results:")
+    logger.info("Final recognized results:")
     for r in results:
-        print(r)
+        logger.info("%s", r)
 
-    print("\n🌍 Translating recognized speech to Korean...")
+    logger.info("Translating recognized speech to Korean...")
     translated_results = translate_json_list(results, target_lang="ko")
 
-    print("\n✅ Final Translated JSON:")
+    logger.info("Final translated JSON:")
     for item in translated_results:
-        print(item)
+        logger.info("%s", item)

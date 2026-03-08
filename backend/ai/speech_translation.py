@@ -1,8 +1,10 @@
 from googletrans import Translator
 from datetime import datetime
+import logging
 
 # Initialize translator
 translator = Translator()
+logger = logging.getLogger(__name__)
 
 def translate_json_list(json_list, target_lang):
     """
@@ -25,26 +27,35 @@ def translate_json_list(json_list, target_lang):
             # Translate using Google Translate API
             translated = translator.translate(original_text, dest=target_lang)
 
-            translated_results.append({
-                "timestamp": timestamp,
-                "original_text": original_text,
-                "translated_text": translated.text
-            })
+            translated_results.append(
+                {
+                    "timestamp": timestamp,
+                    "original_text": original_text,
+                    "translated_text": translated.text,
+                }
+            )
 
-            print(f"[{timestamp}] {original_text} → {translated.text}")
+            logger.info("[%s] %s -> %s", timestamp, original_text, translated.text)
 
-        except Exception as e:
-            print(f"⚠️ Translation error for '{original_text}': {e}")
-            translated_results.append({
-                "timestamp": timestamp,
-                "original_text": original_text,
-                "translated_text": None
-            })
+        except Exception:
+            logger.exception("Translation error for %r", original_text)
+            translated_results.append(
+                {
+                    "timestamp": timestamp,
+                    "original_text": original_text,
+                    "translated_text": None,
+                }
+            )
 
     return translated_results
 
 
 if __name__ == "__main__":
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s [%(levelname)s] %(message)s",
+    )
+
     # Example test
     sample_input = [
         {"timestamp": "20251010_153045", "text": "hello my name is kevin"},
@@ -52,6 +63,6 @@ if __name__ == "__main__":
     ]
 
     result = translate_json_list(sample_input, target_lang="ko")
-    print("\nFinal translated JSON:")
+    logger.info("Final translated JSON:")
     for r in result:
-        print(r)
+        logger.info("%s", r)
