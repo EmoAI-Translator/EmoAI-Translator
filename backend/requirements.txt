@@ -23,6 +23,8 @@ certifi
 googletrans==4.0.0-rc1
 SpeechRecognition==3.10.4
 PyAudio>=0.2.14
+# Install a CUDA-enabled PyTorch build on GPU hosts before using this requirements file.
+torch
 openai-whisper>=20250625
 transformers
 librosa

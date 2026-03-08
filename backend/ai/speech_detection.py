@@ -23,10 +23,28 @@ logger = logging.getLogger(__name__)
 # -------------------------------
 # Load Models Once
 # -------------------------------
-whisper_model = whisper.load_model("base")
+DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
+WHISPER_FP16 = DEVICE == "cuda"
+
+whisper_model = whisper.load_model("base", device=DEVICE)
 emotion_model_name = "superb/wav2vec2-base-superb-er"
 emotion_extractor = AutoFeatureExtractor.from_pretrained(emotion_model_name)
-emotion_model = AutoModelForAudioClassification.from_pretrained(emotion_model_name)
+emotion_model = AutoModelForAudioClassification.from_pretrained(
+    emotion_model_name
+).to(DEVICE)
+emotion_model.eval()
+
+logger.info(
+    "AI runtime initialized: cuda_available=%s selected_device=%s whisper_device=%s emotion_device=%s",
+    torch.cuda.is_available(),
+    DEVICE,
+    getattr(whisper_model, "device", DEVICE),
+    next(emotion_model.parameters()).device,
+)
+if DEVICE != "cuda":
+    logger.warning(
+        "CUDA is unavailable or PyTorch is CPU-only. Falling back to CPU inference."
+    )
 
 
 # -------------------------------
@@ -38,10 +56,11 @@ def detect_emotion_from_audio(wav_path: str):
     """
     speech, sr = librosa.load(wav_path, sr=16000)
     inputs = emotion_extractor(speech, sampling_rate=16000, return_tensors="pt")
+    inputs = {key: value.to(DEVICE) for key, value in inputs.items()}
 
     with torch.no_grad():
         logits = emotion_model(**inputs).logits
-        probs = torch.nn.functional.softmax(logits, dim=-1)[0]
+        probs = torch.nn.functional.softmax(logits, dim=-1)[0].detach().cpu()
         pred_id = torch.argmax(probs).item()
 
     label = emotion_model.config.id2label[pred_id]
@@ -74,7 +93,7 @@ def detect_language_and_transcribe_from_base64(audio_b64: str):
 
     try:
         t5 = perf_counter()
-        result = whisper_model.transcribe(temp_path)
+        result = whisper_model.transcribe(temp_path, fp16=WHISPER_FP16)
         t6 = perf_counter()
         timings["whisper"] = (t6 - t5) * 1000
 
