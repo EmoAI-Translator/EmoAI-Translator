@@ -5,26 +5,27 @@ import logging
 from time import perf_counter
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Request
 from fastapi.middleware.cors import CORSMiddleware
-from ai.speech_translation import translate_json_list
 from pydantic import BaseModel
 from datetime import datetime
 import os
 from bson import ObjectId
 from fastapi import Body
-from ai.speech_detection import detect_language_and_transcribe_from_base64
 from gtts import gTTS
-import os
 import subprocess
-
-#mongo db (not gonnna use)
-# from db.connection import db
-# from pymongo import MongoClient
 
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s [%(levelname)s] %(message)s",
+    force=True,
 )
 logger = logging.getLogger(__name__)
+
+from ai.speech_translation import translate_json_list
+from ai.speech_detection import detect_language_and_transcribe_from_base64
+
+#mongo db (not gonnna use)
+# from db.connection import db
+# from pymongo import MongoClient
 
 app = FastAPI()
 
@@ -136,13 +137,13 @@ async def speech_websocket(websocket: WebSocket):
                     t0 = perf_counter()
 
                     t1 = perf_counter()
-                    opus_b64 = convert_to_opus_base64(audio_b64, audio_format)
+                    wav_b64 = convert_to_wav_base64(audio_b64, audio_format)
                     t2 = perf_counter()
                     timings['convert'] = (t2 - t1) * 1000
-                    logger.info("[AUDIO] converted_opus_b64_len=%s", len(opus_b64))
+                    logger.info("[AUDIO] converted_wav_b64_len=%s", len(wav_b64))
 
                     t3 = perf_counter()
-                    result = detect_language_and_transcribe_from_base64(opus_b64)
+                    result = detect_language_and_transcribe_from_base64(wav_b64)
                     t4 = perf_counter()
                     timings['detect'] = (t4 - t3) * 1000
                     detect_timings = result.get("timings", {})
@@ -208,7 +209,9 @@ async def speech_websocket(websocket: WebSocket):
                     timings["total"] = (t10 - t0) * 1000
                     logger.info(
                         "[TIMINGS] convert=%.1fms detect_total=%.1fms detect_outer=%.1fms "
-                        "decode_b64=%.1fms write_temp=%.1fms whisper=%.1fms emotion=%.1fms cleanup=%.1fms "
+                        "decode_b64=%.1fms write_temp=%.1fms whisper=%.1fms emotion=%.1fms "
+                        "emotion_load=%.1fms emotion_extract=%.1fms emotion_forward=%.1fms "
+                        "emotion_postprocess=%.1fms emotion_total=%.1fms cleanup=%.1fms "
                         "translate=%.1fms tts=%.1fms send=%.1fms total=%.1fms",
                         timings["convert"],
                         detect_timings.get("detect_total", timings["detect"]),
@@ -217,6 +220,11 @@ async def speech_websocket(websocket: WebSocket):
                         detect_timings.get("write_temp", 0.0),
                         detect_timings.get("whisper", 0.0),
                         detect_timings.get("emotion", 0.0),
+                        detect_timings.get("emotion_load", 0.0),
+                        detect_timings.get("emotion_extract", 0.0),
+                        detect_timings.get("emotion_forward", 0.0),
+                        detect_timings.get("emotion_postprocess", 0.0),
+                        detect_timings.get("emotion_total", 0.0),
                         detect_timings.get("cleanup", 0.0),
                         timings["translate"],
                         timings["tts"],
@@ -301,10 +309,10 @@ def _suffix_from_audio_format(audio_format: str | None) -> str:
     return ".bin"
 
 
-def convert_to_opus_base64(audio_b64: str, audio_format: str | None) -> str:
+def convert_to_wav_base64(audio_b64: str, audio_format: str | None) -> str:
     """
-    base64로 받은 오디오(ogg/webm/opus/wav 등)를 ffmpeg로 16kHz mono OPUS로 변환한 뒤,
-    변환된 OPUS를 다시 base64로 반환.
+    base64로 받은 오디오(ogg/webm/opus/wav 등)를 ffmpeg로 16kHz mono PCM WAV로 변환한 뒤,
+    변환된 WAV를 다시 base64로 반환.
     """
     raw_bytes = base64.b64decode(audio_b64)
     in_suffix = _suffix_from_audio_format(audio_format)
@@ -317,9 +325,9 @@ def convert_to_opus_base64(audio_b64: str, audio_format: str | None) -> str:
             fin.flush()
             in_path = fin.name
 
-        out_path = in_path + ".opus"
+        out_path = in_path + ".wav"
 
-        # whisper + emotion 파이프라인에 맞게 16kHz mono로 통일
+        # whisper + emotion 파이프라인에 맞게 16kHz mono PCM WAV로 통일
         cmd = [
             "ffmpeg",
             "-y",
@@ -333,17 +341,17 @@ def convert_to_opus_base64(audio_b64: str, audio_format: str | None) -> str:
             "-ar",
             "16000",
             "-c:a",
-            "libopus",
+            "pcm_s16le",
             "-f",
-            "ogg",
+            "wav",
             out_path,
         ]
         subprocess.run(cmd, check=True)
 
         with open(out_path, "rb") as f:
-            opus_bytes = f.read()
+            wav_bytes = f.read()
 
-        return base64.b64encode(opus_bytes).decode("utf-8")
+        return base64.b64encode(wav_bytes).decode("utf-8")
     finally:
         if in_path:
             try:

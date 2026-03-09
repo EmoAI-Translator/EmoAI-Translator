@@ -1,6 +1,6 @@
 services:
   backend:
-    build: 
+    build:
       context: .
       dockerfile: backend/Dockerfile
     container_name: fastapi-backend
@@ -8,7 +8,5 @@ services:
       - "8000:8000"
     volumes:
       - ./backend:/app
-    # networks:
-    #   - app-network
     env_file:
       - ./backend/.env

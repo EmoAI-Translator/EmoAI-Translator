@@ -1,8 +1,10 @@
 import base64
+import io
 import logging
 import queue
 import threading
 import time
+import wave
 from datetime import datetime
 import speech_recognition as sr
 import tempfile
@@ -10,8 +12,8 @@ import os
 import whisper
 from ai.speech_translation import translate_json_list
 import warnings
+import numpy as np
 import torch
-import librosa
 from time import perf_counter
 from transformers import AutoFeatureExtractor, AutoModelForAudioClassification
 
@@ -23,52 +25,105 @@ logger = logging.getLogger(__name__)
 # -------------------------------
 # Load Models Once
 # -------------------------------
-DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
-WHISPER_FP16 = DEVICE == "cuda"
+WHISPER_DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
+EMOTION_DEVICE = "cpu"
+WHISPER_FP16 = WHISPER_DEVICE == "cuda"
 
-whisper_model = whisper.load_model("base", device=DEVICE)
+whisper_model = whisper.load_model("base", device=WHISPER_DEVICE)
 emotion_model_name = "superb/wav2vec2-base-superb-er"
 emotion_extractor = AutoFeatureExtractor.from_pretrained(emotion_model_name)
 emotion_model = AutoModelForAudioClassification.from_pretrained(
     emotion_model_name
-).to(DEVICE)
+).to(EMOTION_DEVICE)
 emotion_model.eval()
 
 logger.info(
     "AI runtime initialized: cuda_available=%s selected_device=%s whisper_device=%s emotion_device=%s",
     torch.cuda.is_available(),
-    DEVICE,
-    getattr(whisper_model, "device", DEVICE),
+    WHISPER_DEVICE,
+    getattr(whisper_model, "device", WHISPER_DEVICE),
     next(emotion_model.parameters()).device,
 )
-if DEVICE != "cuda":
+if WHISPER_DEVICE != "cuda":
     logger.warning(
-        "CUDA is unavailable or PyTorch is CPU-only. Falling back to CPU inference."
+        "CUDA is unavailable or PyTorch is CPU-only. Falling back to CPU inference for Whisper."
     )
 
 
 # -------------------------------
 # Emotion Detection Function
 # -------------------------------
-def detect_emotion_from_audio(wav_path: str):
+def _resample_audio(audio: np.ndarray, src_sr: int, dst_sr: int) -> np.ndarray:
+    if src_sr == dst_sr or audio.size == 0:
+        return audio
+
+    duration = audio.shape[0] / float(src_sr)
+    target_length = max(1, int(round(duration * dst_sr)))
+    src_positions = np.arange(audio.shape[0], dtype=np.float32)
+    dst_positions = np.linspace(0, audio.shape[0] - 1, num=target_length, dtype=np.float32)
+    return np.interp(dst_positions, src_positions, audio).astype(np.float32)
+
+
+def _load_wav_bytes(wav_bytes: bytes, target_sr: int = 16000) -> np.ndarray:
+    with wave.open(io.BytesIO(wav_bytes), "rb") as wav_file:
+        num_channels = wav_file.getnchannels()
+        sample_width = wav_file.getsampwidth()
+        sample_rate = wav_file.getframerate()
+        frame_count = wav_file.getnframes()
+        frames = wav_file.readframes(frame_count)
+
+    if sample_width == 1:
+        audio = np.frombuffer(frames, dtype=np.uint8).astype(np.float32)
+        audio = (audio - 128.0) / 128.0
+    elif sample_width == 2:
+        audio = np.frombuffer(frames, dtype=np.int16).astype(np.float32) / 32768.0
+    elif sample_width == 4:
+        audio = np.frombuffer(frames, dtype=np.int32).astype(np.float32) / 2147483648.0
+    else:
+        raise ValueError(f"Unsupported WAV sample width: {sample_width}")
+
+    if num_channels > 1:
+        audio = audio.reshape(-1, num_channels).mean(axis=1)
+
+    return _resample_audio(audio, sample_rate, target_sr)
+
+
+def detect_emotion_from_audio(wav_bytes: bytes):
     """
     Returns: {"emotion": str, "scores": dict}
     """
-    speech, sr = librosa.load(wav_path, sr=16000)
-    inputs = emotion_extractor(speech, sampling_rate=16000, return_tensors="pt")
-    inputs = {key: value.to(DEVICE) for key, value in inputs.items()}
+    timings = {}
 
+    t1 = perf_counter()
+    speech = _load_wav_bytes(wav_bytes, target_sr=16000)
+    t2 = perf_counter()
+    timings["emotion_load"] = (t2 - t1) * 1000
+
+    t3 = perf_counter()
+    inputs = emotion_extractor(speech, sampling_rate=16000, return_tensors="pt")
+    inputs = {key: value.to(EMOTION_DEVICE) for key, value in inputs.items()}
+    t4 = perf_counter()
+    timings["emotion_extract"] = (t4 - t3) * 1000
+
+    t5 = perf_counter()
     with torch.no_grad():
         logits = emotion_model(**inputs).logits
         probs = torch.nn.functional.softmax(logits, dim=-1)[0].detach().cpu()
         pred_id = torch.argmax(probs).item()
+    t6 = perf_counter()
+    timings["emotion_forward"] = (t6 - t5) * 1000
 
+    t7 = perf_counter()
     label = emotion_model.config.id2label[pred_id]
     scores = {
         emotion_model.config.id2label[i]: round(float(probs[i]), 4)
         for i in range(len(probs))
     }
-    return {"emotion": label, "scores": scores}
+    t8 = perf_counter()
+    timings["emotion_postprocess"] = (t8 - t7) * 1000
+    timings["emotion_total"] = sum(timings.values())
+
+    return {"emotion": label, "scores": scores, "timings": timings}
 
 
 # -------------------------------
@@ -98,9 +153,10 @@ def detect_language_and_transcribe_from_base64(audio_b64: str):
         timings["whisper"] = (t6 - t5) * 1000
 
         t7 = perf_counter()
-        emotion_result = detect_emotion_from_audio(temp_path)
+        emotion_result = detect_emotion_from_audio(audio_bytes)
         t8 = perf_counter()
         timings["emotion"] = (t8 - t7) * 1000
+        timings.update(emotion_result.get("timings", {}))
     finally:
         t9 = perf_counter()
         os.remove(temp_path)
